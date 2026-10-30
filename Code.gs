@@ -12,9 +12,7 @@ var SPREADSHEET_ID = "1SPCZkf-gtaBZ2z6fi6XF-CS3a4g_A5cdllwYeZOIFf6G0Xl2fcqDGY8c-
 
 var SHEET_NAMES = {
   PESERTA: "PESERTA",
-  PENGATURAN: "PENGATURAN",
-  LOG_EMAIL: "LOG_EMAIL",
-  LOG_AKTIVITAS: "LOG_AKTIVITAS"
+  PENGATURAN: "PENGATURAN"
 };
 
 // --- MENU SETUP UNTUK GOOGLE SHEETS WORKSPACE ---
@@ -114,16 +112,6 @@ function setupDatabase() {
       sheetPengaturan.autoResizeColumns(1, 3);
     }
 
-    // --- SHEET 3: LOG_EMAIL ---
-    var sheetLogEmail = getOrCreateSheet(ss, SHEET_NAMES.LOG_EMAIL);
-    var headersLogEmail = ["Timestamp", "No_Pendaftaran", "Tujuan", "Tahap_Email", "Status_Kirim", "Pesan_Error"];
-    styleHeader(sheetLogEmail, headersLogEmail, "#475569", "#ffffff");
-
-    // --- SHEET 4: LOG_AKTIVITAS ---
-    var sheetLogAkt = getOrCreateSheet(ss, SHEET_NAMES.LOG_AKTIVITAS);
-    var headersLogAkt = ["Timestamp", "Aksi", "Role_Pengguna", "Detail_Perubahan"];
-    styleHeader(sheetLogAkt, headersLogAkt, "#475569", "#ffffff");
-
     // Sinkronisasi paksa
     SpreadsheetApp.flush();
 
@@ -216,16 +204,23 @@ function recalculateCountersAndStats(ss) {
   };
 
   if (lastRow > 1) {
-    // Ambil kolom Level (G/7), Mapel (H/8), Kode (I/9), Ruang (J/10), Status (L/12)
-    var range = sheet.getRange(2, 7, lastRow - 1, 6).getValues();
+    // Ambil kolom No_Pendaftaran (B/2) s/d Status (L/12) -> 11 kolom (indeks 0..10)
+    var range = sheet.getRange(2, 2, lastRow - 1, 11).getValues();
     stats.total = range.length;
-    counters.master = range.length;
+    var maxMaster = 0;
 
     for (var i = 0; i < range.length; i++) {
-      var lvl = String(range[i][0] || "");
-      var mapel = String(range[i][1] || "");
-      var ruang = String(range[i][3] || "");
-      var status = String(range[i][5] || "");
+      var noReg = String(range[i][0] || "");
+      var m = noReg.match(/(\d+)$/);
+      if (m) {
+        var num = parseInt(m[1], 10);
+        if (num > maxMaster) maxMaster = num;
+      }
+
+      var lvl = String(range[i][5] || "");
+      var mapel = String(range[i][6] || "");
+      var ruang = String(range[i][8] || "");
+      var status = String(range[i][10] || "");
 
       if (lvl.indexOf("1") !== -1) stats.level1++;
       if (lvl.indexOf("2") !== -1) stats.level2++;
@@ -242,6 +237,7 @@ function recalculateCountersAndStats(ss) {
         counters[ruang]++;
       }
     }
+    counters.master = Math.max(range.length, maxMaster);
   }
 
   var props = PropertiesService.getScriptProperties();
@@ -284,6 +280,11 @@ function doGet(e) {
         break;
 
       case "recalc":
+        var recalcAuth = handleVerifyDualPin(e && e.parameter ? e.parameter.pin : "");
+        if (!recalcAuth.authorized || recalcAuth.role !== "super_admin") {
+          result = { status: "error", message: "Akses ditolak: PIN Super Admin diperlukan." };
+          break;
+        }
         recalculateCountersAndStats();
         result = { status: "success", message: "Statistik berhasil dihitung ulang dari data sheet" };
         break;
@@ -326,6 +327,10 @@ function doPost(e) {
 
       case "verifyAdminPin":
         result = handleVerifyDualPin(payload.pin);
+        break;
+
+      case "getPesertaList":
+        result = handleGetPesertaList(payload);
         break;
 
       case "verifikasiPeserta":
@@ -447,6 +452,11 @@ function handleVerifyDualPin(inputPin) {
  */
 function handleDaftarPesertaTurbo(data) {
   try {
+    var pubCfg = handleGetPublicConfig();
+    if (pubCfg && pubCfg.data && String(pubCfg.data.Status_Pendaftaran || "").trim().toUpperCase() === "TUTUP") {
+      return { status: "error", message: "Mohon maaf, pendaftaran OMEGA PLUS 2026 saat ini sedang ditutup oleh panitia." };
+    }
+
     var nama = String(data.nama || "").trim().toUpperCase();
     var sekolah = String(data.sekolah || "").trim().toUpperCase();
     var alamatSekolah = String(data.alamatSekolah || "").trim();
@@ -458,20 +468,51 @@ function handleDaftarPesertaTurbo(data) {
       return { status: "error", message: "Mohon lengkapi seluruh isian formulir yang bertanda bintang (*)" };
     }
 
+    if (!data.buktiBase64) {
+      return { status: "error", message: "Bukti transfer pembayaran wajib diunggah!" };
+    }
+
+    // 1. Upload Bukti Transfer ke Google Drive di luar lock agar tidak menahan antrean
+    var buktiTransferUrl = "-";
+    var driveFile = null;
+    try {
+      var folderName = "BUKTI_TRANSFER_OMEGA_2026";
+      var folders = DriveApp.getFoldersByName(folderName);
+      var targetFolder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+
+      var base64Data = String(data.buktiBase64);
+      var mimeType = data.buktiMimeType || "image/jpeg";
+      var cleanBase64 = base64Data.replace(/^data:[a-zA-Z0-9\/\-+.]+;base64,/, '');
+      var decodedBytes = Utilities.base64Decode(cleanBase64);
+      var ext = mimeType.indexOf("png") !== -1 ? ".png" : (mimeType.indexOf("pdf") !== -1 ? ".pdf" : ".jpg");
+      var tempFileName = "BUKTI_" + nama.replace(/[^A-Z0-9]/g, "_").slice(0, 20) + "_" + new Date().getTime() + ext;
+
+      var blob = Utilities.newBlob(decodedBytes, mimeType, tempFileName);
+      driveFile = targetFolder.createFile(blob);
+      driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      buktiTransferUrl = driveFile.getUrl();
+    } catch (uploadErr) {
+      Logger.log("Gagal upload Drive: " + uploadErr.toString());
+      return { status: "error", message: "Gagal mengunggah file bukti transfer ke Google Drive. Silakan coba lagi." };
+    }
+
+    // 2. Lock eksekusi untuk penomoran & penulisan baris ke Sheet PESERTA secara atomik
     var lock = LockService.getScriptLock();
-    lock.waitLock(6000); // Lock aman untuk multi-user submit
+    lock.waitLock(25000);
 
     var noPendaftaran = "";
     var kodePeserta = "";
     var ruangKelas = "";
     var roomNum = 1;
+    var timestamp = new Date();
+    var statusVerif = "Menunggu Verifikasi";
 
     try {
       var props = PropertiesService.getScriptProperties();
       var countersRaw = props.getProperty("OMEGA_COUNTERS");
       var counters = countersRaw ? JSON.parse(countersRaw) : null;
 
-      if (!counters || !counters.master) {
+      if (!counters || typeof counters.master !== "number") {
         recalculateCountersAndStats();
         counters = JSON.parse(props.getProperty("OMEGA_COUNTERS"));
       }
@@ -492,7 +533,30 @@ function handleDaftarPesertaTurbo(data) {
       kodePeserta = "omega-" + num4Str + "-" + levelCode + "-" + room2Str + "-2026";
       noPendaftaran = "OMP-2026-" + num4Str;
 
-      // Update counter ruang
+      // Tulis Atomic Single-Row ke Sheet PESERTA di dalam lock
+      var ss = getDatabase();
+      var sheet = ss.getSheetByName(SHEET_NAMES.PESERTA);
+
+      sheet.appendRow([
+        timestamp,
+        noPendaftaran,
+        sanitizeSheetCell(nama),
+        sanitizeSheetCell(sekolah),
+        sanitizeSheetCell(alamatSekolah),
+        sanitizeSheetCell(noHpGuru),
+        sanitizeSheetCell(level),
+        sanitizeSheetCell(mapel),
+        kodePeserta,
+        ruangKelas,
+        buktiTransferUrl,
+        statusVerif,
+        "Pendaftaran via Web Portal Resmi",
+        "-"
+      ]);
+
+      SpreadsheetApp.flush();
+
+      // Update counter ruang & simpan setelah appendRow sukses
       counters[ruangKelas] = (counters[ruangKelas] || 0) + 1;
       props.setProperty("OMEGA_COUNTERS", JSON.stringify(counters));
 
@@ -509,60 +573,17 @@ function handleDaftarPesertaTurbo(data) {
 
       props.setProperty("DASHBOARD_STATS", JSON.stringify(stats));
       CacheService.getScriptCache().put("DASHBOARD_STATS", JSON.stringify(stats), 21600);
-
     } finally {
       lock.releaseLock();
     }
 
-    // Handle Upload Bukti Transfer ke Google Drive
-    var buktiTransferUrl = "-";
-    if (data.buktiBase64) {
+    // Rename file Drive sesuai kode peserta (opsional, di luar lock)
+    if (driveFile && kodePeserta) {
       try {
-        var folderName = "BUKTI_TRANSFER_OMEGA_2026";
-        var folders = DriveApp.getFoldersByName(folderName);
-        var targetFolder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
-
-        var base64Data = String(data.buktiBase64);
-        var mimeType = data.buktiMimeType || "image/jpeg";
-        var cleanBase64 = base64Data.replace(/^data:[a-zA-Z0-9\/\-+.]+;base64,/, '');
-        var decodedBytes = Utilities.base64Decode(cleanBase64);
-        var ext = mimeType.indexOf("png") !== -1 ? ".png" : (mimeType.indexOf("pdf") !== -1 ? ".pdf" : ".jpg");
-        var fileName = "BUKTI_" + kodePeserta + ext;
-
-        var blob = Utilities.newBlob(decodedBytes, mimeType, fileName);
-        var driveFile = targetFolder.createFile(blob);
-        driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        buktiTransferUrl = driveFile.getUrl();
-      } catch (uploadErr) {
-        Logger.log("Gagal upload Drive: " + uploadErr.toString());
-        buktiTransferUrl = "Tersimpan (Lokal/Base64)";
-      }
+        var extFinal = (data.buktiMimeType || "").indexOf("png") !== -1 ? ".png" : ((data.buktiMimeType || "").indexOf("pdf") !== -1 ? ".pdf" : ".jpg");
+        driveFile.setName("BUKTI_" + kodePeserta + extFinal);
+      } catch (e) {}
     }
-
-    // Tulis Atomic Single-Row ke Sheet PESERTA
-    var ss = getDatabase();
-    var sheet = ss.getSheetByName(SHEET_NAMES.PESERTA);
-    var timestamp = new Date();
-    var statusVerif = "Menunggu Verifikasi";
-
-    sheet.appendRow([
-      timestamp,
-      noPendaftaran,
-      nama,
-      sekolah,
-      alamatSekolah,
-      noHpGuru,
-      level,
-      mapel,
-      kodePeserta,
-      ruangKelas,
-      buktiTransferUrl,
-      statusVerif,
-      "Pendaftaran via Web Portal Resmi",
-      "-"
-    ]);
-
-    SpreadsheetApp.flush();
 
     return {
       status: "success",
@@ -617,6 +638,11 @@ function handleGetDashboardStats() {
  * 6. GET PESERTA LIST DENGAN FILTER RUANG, LEVEL, MAPEL & SEARCH
  */
 function handleGetPesertaList(params) {
+  var auth = handleVerifyDualPin(params ? params.pin : "");
+  if (!auth.authorized) {
+    return { status: "error", message: "Akses ditolak: PIN Panitia atau Super Admin tidak valid." };
+  }
+
   var ss = getDatabase();
   var sheet = ss.getSheetByName(SHEET_NAMES.PESERTA);
   var lastRow = sheet.getLastRow();
@@ -625,7 +651,7 @@ function handleGetPesertaList(params) {
     return { status: "success", total: 0, data: [] };
   }
 
-  var limit = (params && params.limit) ? parseInt(params.limit, 10) : 500;
+  var limit = (params && params.limit) ? parseInt(params.limit, 10) : 5000;
   var startRow = Math.max(2, lastRow - limit + 1);
   var numRows = lastRow - startRow + 1;
 
@@ -745,6 +771,11 @@ function handleCekStatus(keyword) {
  */
 function handleVerifikasiPeserta(payload) {
   try {
+    var auth = handleVerifyDualPin(payload ? payload.pin : "");
+    if (!auth.authorized || auth.role !== "super_admin") {
+      return { status: "error", message: "Akses ditolak: Hanya Super Admin yang berhak memverifikasi peserta." };
+    }
+
     var ss = getDatabase();
     var sheet = ss.getSheetByName(SHEET_NAMES.PESERTA);
     var noPendaftaran = String(payload.noPendaftaran || "").trim();
@@ -792,6 +823,11 @@ function handleVerifikasiPeserta(payload) {
  */
 function handleUpdatePeserta(payload) {
   try {
+    var auth = handleVerifyDualPin(payload ? payload.pin : "");
+    if (!auth.authorized || auth.role !== "super_admin") {
+      return { status: "error", message: "Akses ditolak: Hanya Super Admin yang berhak mengubah data peserta." };
+    }
+
     var ss = getDatabase();
     var sheet = ss.getSheetByName(SHEET_NAMES.PESERTA);
     var noReg = String(payload.noPendaftaran || "").trim();
@@ -812,16 +848,17 @@ function handleUpdatePeserta(payload) {
 
     // Batch read kolom 3 s/d 10 (Nama, Sekolah, Alamat, NoHp, Level, Mapel, Kode, Ruang)
     var rowData = sheet.getRange(targetRow, 3, 1, 8).getValues()[0];
-    if (payload.nama) rowData[0] = String(payload.nama).toUpperCase();
-    if (payload.sekolah) rowData[1] = String(payload.sekolah).toUpperCase();
-    if (payload.alamatSekolah) rowData[2] = String(payload.alamatSekolah);
-    if (payload.noHpGuru) rowData[3] = String(payload.noHpGuru);
-    if (payload.level) rowData[4] = String(payload.level);
-    if (payload.mapel) rowData[5] = String(payload.mapel);
-    if (payload.ruangKelas) rowData[7] = String(payload.ruangKelas);
+    if (payload.nama) rowData[0] = sanitizeSheetCell(String(payload.nama).toUpperCase());
+    if (payload.sekolah) rowData[1] = sanitizeSheetCell(String(payload.sekolah).toUpperCase());
+    if (payload.alamatSekolah) rowData[2] = sanitizeSheetCell(String(payload.alamatSekolah));
+    if (payload.noHpGuru) rowData[3] = sanitizeSheetCell(String(payload.noHpGuru));
+    if (payload.level) rowData[4] = sanitizeSheetCell(String(payload.level));
+    if (payload.mapel) rowData[5] = sanitizeSheetCell(String(payload.mapel));
+    if (payload.ruangKelas) rowData[7] = sanitizeSheetCell(String(payload.ruangKelas));
 
     sheet.getRange(targetRow, 3, 1, 8).setValues([rowData]);
     SpreadsheetApp.flush();
+    recalculateCountersAndStats(ss);
 
     return { status: "success", message: "Data peserta berhasil diperbarui!" };
   } catch (err) {
@@ -835,6 +872,11 @@ function handleUpdatePeserta(payload) {
  */
 function handleDeletePeserta(payload) {
   try {
+    var auth = handleVerifyDualPin(payload ? payload.pin : "");
+    if (!auth.authorized || auth.role !== "super_admin") {
+      return { status: "error", message: "Akses ditolak: Hanya Super Admin yang berhak menghapus data peserta." };
+    }
+
     var ss = getDatabase();
     var sheet = ss.getSheetByName(SHEET_NAMES.PESERTA);
     var noReg = String(payload.noPendaftaran || "").trim();
@@ -869,5 +911,16 @@ function handleDeletePeserta(payload) {
 function padZero(num, size) {
   var s = String(num);
   while (s.length < (size || 2)) { s = "0" + s; }
+  return s;
+}
+
+/**
+ * Helper pencegah formula injection (=, +, -, @) di Google Sheets
+ */
+function sanitizeSheetCell(val) {
+  var s = String(val == null ? "" : val).trim();
+  if (/^[=+\-@]/.test(s)) {
+    return "'" + s;
+  }
   return s;
 }

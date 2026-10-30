@@ -10,12 +10,12 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Pendaftaran Resmi OMEGA PLUS 2026 — SMPN 1 Pamekasan">
   <meta property="og:description" content="Daftar sekarang di ajang olimpiade SD/MI terbesar se-Madura. Rebut Tiket Emas Kelas Unggulan tanpa tes + Bebas Biaya Seragam & Buku 3 Tahun!">
-  <meta property="og:image" content="https://file.garden/aehADr1aKQol7cT9/Omega_Plus_Circular_Emblem-removebg-preview.png">
+  <meta property="og:image" content="logo.png">
   <meta property="og:image:width" content="600">
   <meta property="og:image:height" content="600">
 
   <!-- Favicon Official Emblem -->
-  <link rel="icon" href="https://file.garden/aehADr1aKQol7cT9/Omega_Plus_Circular_Emblem-removebg-preview.png" type="image/png">
+  <link rel="icon" href="logo.png" type="image/png">
   <link rel="shortcut icon" href="logo.png" type="image/png">
 
   <!-- Google Fonts: Plus Jakarta Sans & Work Sans -->
@@ -767,7 +767,7 @@
       <div class="header-top">
         <div class="school-identity">
           <div class="school-logo-badge">
-            <img src="https://file.garden/aehADr1aKQol7cT9/Omega_Plus_Circular_Emblem-removebg-preview.png" onerror="this.src='logo.png'" alt="Logo OMEGA PLUS">
+            <img src="logo.png" alt="Logo OMEGA PLUS">
           </div>
           <div class="school-text">
             <h3>SMP NEGERI 1 PAMEKASAN</h3>
@@ -980,11 +980,11 @@
       <!-- HASIL KWITANSI RESMI DIGITAL (MUNCUL OTOMATIS SETELAH SUBMIT) -->
       <div id="receiptResultSection" style="display: none;">
         <div class="receipt-container">
-          <img class="receipt-watermark" src="https://file.garden/aehADr1aKQol7cT9/Omega_Plus_Circular_Emblem-removebg-preview.png" alt="Watermark">
+          <img class="receipt-watermark" src="logo.png" alt="Watermark">
 
           <div class="receipt-header">
             <div class="receipt-logo">
-              <img src="https://file.garden/aehADr1aKQol7cT9/Omega_Plus_Circular_Emblem-removebg-preview.png" onerror="this.src='logo.png'" alt="Logo OMEGA PLUS">
+              <img src="logo.png" alt="Logo OMEGA PLUS">
               <div class="receipt-title-text">
                 <h3>KWITANSI RESMI PENDAFTARAN</h3>
                 <p>OMEGA PLUS 2026 — SMP NEGERI 1 PAMEKASAN</p>
@@ -1104,6 +1104,11 @@
     let uploadedMimeType = null;
     let uploadedFileName = null;
     let lastRegisteredData = null;
+    let statusSearchResults = [];
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
 
     // Switch Tabs
     function switchMainTab(tab) {
@@ -1262,38 +1267,38 @@
           Swal.fire({ icon: 'error', title: 'Pendaftaran Gagal', text: result.message || 'Terjadi kesalahan sistem.' });
         }
       } catch (err) {
-        // Fallback pendaftaran instan jika koneksi API terputus
-        const now = new Date();
-        const randId = 'OMP-2026-0001';
-        const dummyData = {
-          noPendaftaran: randId,
-          nama: nama,
-          sekolah: sekolah,
-          alamatSekolah: alamatSekolah,
-          noHpGuru: noHpGuru,
-          level: level,
-          mapel: mapel,
-          kodePeserta: 'omega-0001-' + (level.includes('1') ? 'L1' : 'L2') + '-01-2026',
-          ruangKelas: 'Ruang 01',
-          statusVerifikasi: 'Menunggu Verifikasi Bank'
-        };
-        lastRegisteredData = dummyData;
-        Swal.close();
-        showDigitalReceipt(dummyData);
+        Swal.fire({
+          icon: 'error',
+          title: 'Gagal Terhubung ke Server',
+          text: 'Koneksi terputus atau waktu unggah habis. Silakan periksa jaringan internet Anda lalu klik Kirim kembali.'
+        });
       }
     }
 
     // Tampilkan Kwitansi Digital
     function showDigitalReceipt(data) {
-      document.getElementById('receiptNoReg').innerText = data.noPendaftaran;
-      document.getElementById('receiptNama').innerText = data.nama;
-      document.getElementById('receiptSekolah').innerText = data.sekolah;
-      document.getElementById('receiptAlamat').innerText = data.alamatSekolah;
-      document.getElementById('receiptHpGuru').innerText = data.noHpGuru;
-      document.getElementById('receiptLevel').innerText = data.level;
-      document.getElementById('receiptMapel').innerText = data.mapel;
+      lastRegisteredData = data;
+      switchMainTab('form');
+
+      const mapelVal = data.mapel || data.mataPelajaran || '-';
+      const statusVal = data.status || data.statusVerifikasi || 'Menunggu Verifikasi Bank';
+      const isLunas = (statusVal === 'Lunas' || statusVal === 'Terverifikasi');
+
+      document.getElementById('receiptNoReg').innerText = data.noPendaftaran || '-';
+      document.getElementById('receiptNama').innerText = data.nama || '-';
+      document.getElementById('receiptSekolah').innerText = data.sekolah || '-';
+      document.getElementById('receiptAlamat').innerText = data.alamatSekolah || '-';
+      document.getElementById('receiptHpGuru').innerText = data.noHpGuru || '-';
+      document.getElementById('receiptLevel').innerText = data.level || '-';
+      document.getElementById('receiptMapel').innerText = mapelVal;
       document.getElementById('receiptRuang').innerText = data.ruangKelas || 'RUANG 01';
-      document.getElementById('receiptKodePeserta').innerText = data.kodePeserta;
+      document.getElementById('receiptKodePeserta').innerText = data.kodePeserta || '-';
+
+      const badge = document.getElementById('receiptStatusBadge');
+      if (badge) {
+        badge.innerText = isLunas ? 'Lunas / Terverifikasi' : statusVal;
+        badge.classList.toggle('lunas', isLunas);
+      }
 
       document.getElementById('formCardPanel').style.display = 'none';
       document.getElementById('receiptResultSection').style.display = 'block';
@@ -1317,7 +1322,9 @@
     function kirimSalinanWA() {
       if (!lastRegisteredData) return;
       const d = lastRegisteredData;
-      const text = `*BUKTI PENDAFTARAN RESMI OMEGA PLUS 2026*\nSMP NEGERI 1 PAMEKASAN\n-----------------------------------\n*No. Registrasi:* ${d.noPendaftaran}\n*Nama Peserta:* ${d.nama}\n*Asal Sekolah:* ${d.sekolah}\n*Alamat Sekolah:* ${d.alamatSekolah}\n*Level:* ${d.level}\n*Mata Pelajaran:* ${d.mapel}\n*Kode Peserta:* ${d.kodePeserta}\n*Alokasi Ruang:* ${d.ruangKelas}\n*Status Pembayaran:* Menunggu Verifikasi\n-----------------------------------\nHarap simpan bukti pendaftaran ini untuk hari pelaksanaan ujian. Terima kasih!`;
+      const mapelVal = d.mapel || d.mataPelajaran || '-';
+      const statusVal = d.status || d.statusVerifikasi || 'Menunggu Verifikasi';
+      const text = `*BUKTI PENDAFTARAN RESMI OMEGA PLUS 2026*\nSMP NEGERI 1 PAMEKASAN\n-----------------------------------\n*No. Registrasi:* ${d.noPendaftaran}\n*Nama Peserta:* ${d.nama}\n*Asal Sekolah:* ${d.sekolah}\n*Alamat Sekolah:* ${d.alamatSekolah || '-'}\n*Level:* ${d.level}\n*Mata Pelajaran:* ${mapelVal}\n*Kode Peserta:* ${d.kodePeserta}\n*Alokasi Ruang:* ${d.ruangKelas}\n*Status Pembayaran:* ${statusVal}\n-----------------------------------\nHarap simpan bukti pendaftaran ini untuk hari pelaksanaan ujian. Terima kasih!`;
       
       const cleanPhone = (d.noHpGuru || '').replace(/[^0-9]/g, '');
       const waNumber = cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : cleanPhone;
@@ -1341,8 +1348,9 @@
         const result = await res.json();
 
         if (result.status === 'success' && result.data && result.data.length > 0) {
+          statusSearchResults = result.data;
           let html = '';
-          result.data.forEach(item => {
+          result.data.forEach((item, idx) => {
             const isLunas = (item.status === 'Lunas' || item.status === 'Terverifikasi');
             const badgeClass = isLunas ? 'background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;' : 'background: #fef3c7; color: #92400e; border: 1px solid #fde68a;';
 
@@ -1351,24 +1359,24 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 12px;">
                   <div>
                     <span style="font-size: 11px; font-weight: bold; color: #657c94; text-transform: uppercase;">Nomor Registrasi</span>
-                    <h3 style="font-size: 1.25rem; font-weight: 800; color: #19365f; margin: 0;">${item.noPendaftaran}</h3>
+                    <h3 style="font-size: 1.25rem; font-weight: 800; color: #19365f; margin: 0;">${esc(item.noPendaftaran)}</h3>
                   </div>
                   <div style="padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: bold; ${badgeClass}">
-                    ${item.status}
+                    ${esc(item.status)}
                   </div>
                 </div>
 
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 14px; margin-bottom: 1rem;">
-                  <div><span style="color: #64748b; font-size: 12px; display: block;">Nama Peserta:</span><strong>${item.nama}</strong></div>
-                  <div><span style="color: #64748b; font-size: 12px; display: block;">Asal Sekolah:</span><strong>${item.sekolah}</strong></div>
-                  <div><span style="color: #64748b; font-size: 12px; display: block;">Tingkatan Level:</span><strong>${item.level}</strong></div>
-                  <div><span style="color: #64748b; font-size: 12px; display: block;">Mata Pelajaran:</span><strong>${item.mataPelajaran}</strong></div>
-                  <div><span style="color: #64748b; font-size: 12px; display: block;">Alokasi Ruang Ujian:</span><strong style="color: #285891; font-size: 16px;">${item.ruangKelas || 'Ruang 01'}</strong></div>
-                  <div><span style="color: #64748b; font-size: 12px; display: block;">Nomor Kode Peserta:</span><strong style="color: #047857; font-size: 15px;">${item.kodePeserta}</strong></div>
+                  <div><span style="color: #64748b; font-size: 12px; display: block;">Nama Peserta:</span><strong>${esc(item.nama)}</strong></div>
+                  <div><span style="color: #64748b; font-size: 12px; display: block;">Asal Sekolah:</span><strong>${esc(item.sekolah)}</strong></div>
+                  <div><span style="color: #64748b; font-size: 12px; display: block;">Tingkatan Level:</span><strong>${esc(item.level)}</strong></div>
+                  <div><span style="color: #64748b; font-size: 12px; display: block;">Mata Pelajaran:</span><strong>${esc(item.mataPelajaran)}</strong></div>
+                  <div><span style="color: #64748b; font-size: 12px; display: block;">Alokasi Ruang Ujian:</span><strong style="color: #285891; font-size: 16px;">${esc(item.ruangKelas || 'Ruang 01')}</strong></div>
+                  <div><span style="color: #64748b; font-size: 12px; display: block;">Nomor Kode Peserta:</span><strong style="color: #047857; font-size: 15px;">${esc(item.kodePeserta)}</strong></div>
                 </div>
 
                 <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                  <button type="button" class="btn btn-secondary" style="height: 38px; font-size: 13px;" onclick="showDigitalReceipt(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                  <button type="button" class="btn btn-secondary" style="height: 38px; font-size: 13px;" onclick="showDigitalReceipt(statusSearchResults[${idx}])">
                     <i data-lucide="printer" style="width: 14px; height: 14px;"></i> Lihat & Cetak Kwitansi
                   </button>
                 </div>

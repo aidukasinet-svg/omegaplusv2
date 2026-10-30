@@ -10,10 +10,10 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Dashboard Panitia OMEGA PLUS 2026 — SMP Negeri 1 Pamekasan">
   <meta property="og:description" content="Portal Administrasi Panitia & Super Admin OMEGA PLUS 2026.">
-  <meta property="og:image" content="https://file.garden/aehADr1aKQol7cT9/Omega_Plus_Circular_Emblem-removebg-preview.png">
+  <meta property="og:image" content="logo.png">
 
   <!-- Favicon Official Emblem -->
-  <link rel="icon" href="https://file.garden/aehADr1aKQol7cT9/Omega_Plus_Circular_Emblem-removebg-preview.png" type="image/png">
+  <link rel="icon" href="logo.png" type="image/png">
   <link rel="shortcut icon" href="logo.png" type="image/png">
 
   <!-- Google Fonts: Plus Jakarta Sans & Work Sans -->
@@ -502,27 +502,6 @@
       font-size: 0.8125rem;
       margin-top: auto;
     }
-
-    /* PRINT ATTENDANCE STYLES (PRESENSI RUANG FORMAT A4) */
-    @media print {
-      body * {
-        visibility: hidden;
-      }
-      #printAttendanceArea, #printAttendanceArea * {
-        visibility: visible;
-      }
-      #printAttendanceArea {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        margin: 0;
-        padding: 20px;
-      }
-      .no-print {
-        display: none !important;
-      }
-    }
   </style>
 </head>
 <body>
@@ -532,7 +511,7 @@
        ========================================================================== -->
   <div id="pinOverlay" class="pin-modal-overlay">
     <div class="pin-modal-card">
-      <img src="https://file.garden/aehADr1aKQol7cT9/Omega_Plus_Circular_Emblem-removebg-preview.png" onerror="this.src='logo.png'" alt="Logo OMEGA PLUS" style="width: 68px; height: 68px; object-fit: contain; border-radius: 50%; margin: 0 auto 0.75rem; display: block; border: 2px solid var(--color-accent-gold); background: #ffffff;">
+      <img src="logo.png" alt="Logo OMEGA PLUS" style="width: 68px; height: 68px; object-fit: contain; border-radius: 50%; margin: 0 auto 0.75rem; display: block; border: 2px solid var(--color-accent-gold); background: #ffffff;">
       <h2 style="font-size: 1.25rem; font-weight: 800; color: #19365f; margin-bottom: 2px;">Autentikasi Panitia & Admin</h2>
       <p style="font-size: 0.8125rem; color: #657c94;">Masukkan PIN Keamanan untuk membuka dashboard data pendaftaran.</p>
 
@@ -544,8 +523,8 @@
         </button>
 
         <div class="pin-hint-box">
-          <div>&bull; <strong>PIN Panitia (2026):</strong> Mode Lihat Saja, filter 30 ruang & cetak absensi.</div>
-          <div style="margin-top: 4px;">&bull; <strong>PIN Super Admin (8899):</strong> Akses penuh verifikasi lunas, edit data, dan export Excel.</div>
+          <div>&bull; <strong>PIN Panitia:</strong> Mode Lihat Saja, filter 30 ruang & cetak absensi.</div>
+          <div style="margin-top: 4px;">&bull; <strong>PIN Super Admin:</strong> Akses penuh verifikasi lunas, edit data, dan export Excel.</div>
         </div>
 
         <div style="margin-top: 1rem;">
@@ -561,7 +540,7 @@
   <header class="header-admin">
     <div class="header-container">
       <div class="brand-box">
-        <img src="https://file.garden/aehADr1aKQol7cT9/Omega_Plus_Circular_Emblem-removebg-preview.png" onerror="this.src='logo.png'" alt="Logo">
+        <img src="logo.png" alt="Logo">
         <div class="brand-text">
           <h2>SMP NEGERI 1 PAMEKASAN</h2>
           <p>Portal Dashboard Panitia OMEGA PLUS 2026</p>
@@ -717,9 +696,6 @@
 
   </main>
 
-  <!-- PRINT ATTENDANCE CONTAINER (HIDDEN UNTIL PRINT ACTION) -->
-  <div id="printAttendanceArea" style="display: none;"></div>
-
   <!-- FOOTER -->
   <footer class="site-footer">
     Panitia OMEGA PLUS 2026 — SMP Negeri 1 Pamekasan | Dukungan Teknis: 0882-2851-1309
@@ -731,6 +707,17 @@
 
     let allPesertaList = [];
     let currentRole = null; // 'super_admin' or 'panitia'
+    let currentPin = null;
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function csvCell(val) {
+      let s = String(val ?? '').trim();
+      if (/^[=+\-@]/.test(s)) s = "'" + s;
+      return `"${s.replace(/"/g, '""')}"`;
+    }
 
     // Populate Dropdown Ruang 01 - 30
     const selectRuang = document.getElementById('filterRuang');
@@ -746,9 +733,11 @@
     document.addEventListener('DOMContentLoaded', () => {
       const savedAuth = sessionStorage.getItem('omegaAdminAuth');
       const savedRole = sessionStorage.getItem('omegaAdminRole');
+      const savedPin = sessionStorage.getItem('omegaAdminPin');
 
-      if (savedAuth === 'true' && savedRole) {
+      if (savedAuth === 'true' && savedRole && savedPin) {
         currentRole = savedRole;
+        currentPin = savedPin;
         document.getElementById('pinOverlay').style.display = 'none';
         updateRoleBadgeHeader();
         loadAllDashboardData();
@@ -770,15 +759,6 @@
 
       errorAlert.style.display = 'none';
 
-      // Cek PIN lokal cepat
-      if (pin === (window.APP_CONFIG.PIN_ADMIN || '8899')) {
-        handleAuthSuccess('super_admin');
-        return;
-      } else if (pin === (window.APP_CONFIG.PIN_PANITIA || '2026')) {
-        handleAuthSuccess('panitia');
-        return;
-      }
-
       // Verifikasi via server Google Apps Script
       try {
         const apiUrl = (window.APP_CONFIG && window.APP_CONFIG.API_URL) ? window.APP_CONFIG.API_URL : '/api';
@@ -790,7 +770,7 @@
         const result = await res.json();
 
         if (result.status === 'success' && result.authorized) {
-          handleAuthSuccess(result.role || 'panitia');
+          handleAuthSuccess(result.role || 'panitia', pin);
         } else {
           errorAlert.innerText = result.message || 'PIN Keamanan tidak sesuai.';
           errorAlert.style.display = 'block';
@@ -798,14 +778,16 @@
           pinInput.focus();
         }
       } catch (e) {
-        errorAlert.innerText = 'Gagal memverifikasi ke server. Coba PIN 8899 (Admin) atau 2026 (Panitia).';
+        errorAlert.innerText = 'Gagal memverifikasi ke server. Periksa koneksi internet Anda.';
         errorAlert.style.display = 'block';
       }
 
-      function handleAuthSuccess(role) {
+      function handleAuthSuccess(role, validPin) {
         currentRole = role;
+        currentPin = validPin;
         sessionStorage.setItem('omegaAdminAuth', 'true');
         sessionStorage.setItem('omegaAdminRole', role);
+        sessionStorage.setItem('omegaAdminPin', validPin);
         document.getElementById('pinOverlay').style.display = 'none';
         updateRoleBadgeHeader();
         loadAllDashboardData();
@@ -833,6 +815,7 @@
     function logoutAdmin() {
       sessionStorage.removeItem('omegaAdminAuth');
       sessionStorage.removeItem('omegaAdminRole');
+      sessionStorage.removeItem('omegaAdminPin');
       location.reload();
     }
 
@@ -858,11 +841,14 @@
         }
 
         // Peserta List
-        const resPeserta = await fetch(`${apiUrl}?action=getPesertaList`);
+        const resPeserta = await fetch(`${apiUrl}?action=getPesertaList&limit=5000&pin=${encodeURIComponent(currentPin || '')}`);
         const dataPeserta = await resPeserta.json();
         if (dataPeserta.status === 'success') {
           allPesertaList = dataPeserta.data || [];
           renderPesertaTable(allPesertaList);
+        } else if (dataPeserta.message && dataPeserta.message.includes('PIN')) {
+          logoutAdmin();
+          return;
         }
 
         document.getElementById('syncStatusText').innerText = 'Tersinkron ke Google Sheets Realtime';
@@ -887,39 +873,39 @@
         const badgeClass = isLunas ? 'badge-lunas' : 'badge-pending';
         
         let buktiLink = '-';
-        if (p.buktiTransferUrl && p.buktiTransferUrl !== '-') {
-          buktiLink = `<a href="${p.buktiTransferUrl}" target="_blank" style="color: #285891; font-weight: 700; text-decoration: underline; font-size: 11px;">Lihat Bukti</a>`;
+        if (p.buktiTransferUrl && /^https?:\/\//i.test(p.buktiTransferUrl)) {
+          buktiLink = `<a href="${esc(p.buktiTransferUrl)}" target="_blank" rel="noopener noreferrer" style="color: #285891; font-weight: 700; text-decoration: underline; font-size: 11px;">Lihat Bukti</a>`;
         }
 
         html += `
           <tr>
-            <td><strong style="color: #285891;">${p.noPendaftaran}</strong></td>
+            <td><strong style="color: #285891;">${esc(p.noPendaftaran)}</strong></td>
             <td>
-              <strong>${p.nama}</strong><br>
-              <span style="font-size: 11px; color: #657c94;">${p.sekolah}</span>
+              <strong>${esc(p.nama)}</strong><br>
+              <span style="font-size: 11px; color: #657c94;">${esc(p.sekolah)}</span>
             </td>
-            <td style="font-size: 11px; max-width: 140px;">${p.alamatSekolah || '-'}</td>
-            <td><a href="https://wa.me/${(p.noHpGuru||'').replace(/[^0-9]/g,'')}" target="_blank" style="color: #047857; text-decoration: none; font-weight: 600;">${p.noHpGuru || '-'}</a></td>
+            <td style="font-size: 11px; max-width: 140px;">${esc(p.alamatSekolah || '-')}</td>
+            <td><a href="https://wa.me/${(p.noHpGuru||'').replace(/[^0-9]/g,'')}" target="_blank" style="color: #047857; text-decoration: none; font-weight: 600;">${esc(p.noHpGuru || '-')}</a></td>
             <td>
-              <span style="font-size: 11px; font-weight: 700; color: #1e293b;">${p.level}</span><br>
-              <span style="font-size: 11px; color: #285891;">${p.mataPelajaran}</span>
+              <span style="font-size: 11px; font-weight: 700; color: #1e293b;">${esc(p.level)}</span><br>
+              <span style="font-size: 11px; color: #285891;">${esc(p.mataPelajaran)}</span>
             </td>
-            <td><span style="color: #047857; font-weight: 700; font-family: monospace;">${p.kodePeserta}</span></td>
-            <td><span class="badge-ruang">${p.ruangKelas || 'Ruang 01'}</span></td>
+            <td><span style="color: #047857; font-weight: 700; font-family: monospace;">${esc(p.kodePeserta)}</span></td>
+            <td><span class="badge-ruang">${esc(p.ruangKelas || 'Ruang 01')}</span></td>
             <td>${buktiLink}</td>
-            <td><span class="badge-status ${badgeClass}">${p.status}</span></td>
+            <td><span class="badge-status ${badgeClass}">${esc(p.status)}</span></td>
             <td style="text-align: center;">
               ${isSuper ? `
                 <div style="display: flex; gap: 4px; justify-content: center;">
                   ${!isLunas ? `
-                    <button class="btn-icon-action" title="Verifikasi Lunas" style="color: #047857;" onclick="verifikasiStatusPeserta('${p.noPendaftaran}')">
+                    <button class="btn-icon-action" title="Verifikasi Lunas" style="color: #047857;" onclick="verifikasiStatusPeserta('${esc(p.noPendaftaran)}')">
                       <i data-lucide="check-circle" style="width: 15px; height: 15px;"></i>
                     </button>
                   ` : ''}
-                  <button class="btn-icon-action" title="Edit Data" style="color: #285891;" onclick="editDataPeserta('${encodeURIComponent(JSON.stringify(p))}')">
+                  <button class="btn-icon-action" title="Edit Data" style="color: #285891;" onclick="editDataPeserta('${esc(p.noPendaftaran)}')">
                     <i data-lucide="edit-3" style="width: 15px; height: 15px;"></i>
                   </button>
-                  <button class="btn-icon-action" title="Hapus" style="color: #dc2626;" onclick="hapusDataPeserta('${p.noPendaftaran}', '${p.nama}')">
+                  <button class="btn-icon-action" title="Hapus" style="color: #dc2626;" onclick="hapusDataPeserta('${esc(p.noPendaftaran)}')">
                     <i data-lucide="trash-2" style="width: 15px; height: 15px;"></i>
                   </button>
                 </div>
@@ -935,15 +921,15 @@
       lucide.createIcons();
     }
 
-    // Filter Lokal Tabel
-    function filterLocalPeserta() {
+    // Helper Filter Peserta Berdasarkan Toolbar
+    function getFilteredPeserta() {
       const q = document.getElementById('filterSearch').value.toLowerCase();
       const lvl = document.getElementById('filterLevel').value;
       const mpl = document.getElementById('filterMapel').value;
       const rng = document.getElementById('filterRuang').value;
       const st = document.getElementById('filterStatus').value;
 
-      const filtered = allPesertaList.filter(p => {
+      return allPesertaList.filter(p => {
         const matchText = (p.noPendaftaran + ' ' + p.nama + ' ' + p.sekolah + ' ' + (p.alamatSekolah||'') + ' ' + (p.noHpGuru||'') + ' ' + p.kodePeserta).toLowerCase().includes(q);
         const matchLvl = (lvl === 'Semua') || p.level.includes(lvl);
         const matchMpl = (mpl === 'Semua') || p.mataPelajaran.includes(mpl);
@@ -951,8 +937,11 @@
         const matchSt = (st === 'Semua') || (p.status.includes(st));
         return matchText && matchLvl && matchMpl && matchRng && matchSt;
       });
+    }
 
-      renderPesertaTable(filtered);
+    // Filter Lokal Tabel
+    function filterLocalPeserta() {
+      renderPesertaTable(getFilteredPeserta());
     }
 
     // Verifikasi Lunas (Super Admin Only)
@@ -979,6 +968,7 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 action: 'verifikasiPeserta',
+                pin: currentPin,
                 noPendaftaran: noReg,
                 status: 'Lunas'
               })
@@ -998,28 +988,44 @@
     }
 
     // Edit Data Peserta (Super Admin Only)
-    function editDataPeserta(jsonStr) {
+    function editDataPeserta(noReg) {
       if (currentRole !== 'super_admin') {
         Swal.fire({ icon: 'warning', title: 'Akses Terbatas', text: 'Hanya Super Admin yang berhak mengubah data peserta.' });
         return;
       }
 
-      const p = JSON.parse(decodeURIComponent(jsonStr));
+      const p = allPesertaList.find(item => item.noPendaftaran === noReg);
+      if (!p) return;
+
+      const curLvl = p.level || 'Level 1 (Kelas 3 - 4)';
+      const curMapel = p.mataPelajaran || 'Matematika';
 
       Swal.fire({
         title: 'Edit Data Peserta',
         html: `
           <div style="text-align: left; font-size: 13px;">
             <label><b>Nama Lengkap:</b></label>
-            <input id="swal-nama" class="swal2-input" value="${p.nama}" style="margin: 4px 0 10px; font-size: 13px;">
+            <input id="swal-nama" class="swal2-input" value="${esc(p.nama)}" style="margin: 4px 0 10px; font-size: 13px;">
             <label><b>Asal Sekolah:</b></label>
-            <input id="swal-sekolah" class="swal2-input" value="${p.sekolah}" style="margin: 4px 0 10px; font-size: 13px;">
+            <input id="swal-sekolah" class="swal2-input" value="${esc(p.sekolah)}" style="margin: 4px 0 10px; font-size: 13px;">
             <label><b>Alamat Sekolah:</b></label>
-            <input id="swal-alamat" class="swal2-input" value="${p.alamatSekolah||''}" style="margin: 4px 0 10px; font-size: 13px;">
+            <input id="swal-alamat" class="swal2-input" value="${esc(p.alamatSekolah||'')}" style="margin: 4px 0 10px; font-size: 13px;">
             <label><b>No. WhatsApp Guru:</b></label>
-            <input id="swal-hp" class="swal2-input" value="${p.noHpGuru||''}" style="margin: 4px 0 10px; font-size: 13px;">
+            <input id="swal-hp" class="swal2-input" value="${esc(p.noHpGuru||'')}" style="margin: 4px 0 10px; font-size: 13px;">
+            <label><b>Tingkatan Level:</b></label>
+            <select id="swal-level" class="swal2-input" style="margin: 4px 0 10px; font-size: 13px; width: 100%; height: 42px;">
+              <option value="Level 1 (Kelas 3 - 4)" ${curLvl.includes('1') ? 'selected' : ''}>Level 1 (Kelas 3 - 4)</option>
+              <option value="Level 2 (Kelas 5 - 6)" ${curLvl.includes('2') ? 'selected' : ''}>Level 2 (Kelas 5 - 6)</option>
+            </select>
+            <label><b>Mata Pelajaran:</b></label>
+            <select id="swal-mapel" class="swal2-input" style="margin: 4px 0 10px; font-size: 13px; width: 100%; height: 42px;">
+              <option value="Matematika" ${curMapel === 'Matematika' ? 'selected' : ''}>Matematika</option>
+              <option value="IPA" ${curMapel === 'IPA' ? 'selected' : ''}>IPA</option>
+              <option value="Bahasa Inggris" ${curMapel === 'Bahasa Inggris' ? 'selected' : ''}>Bahasa Inggris</option>
+              <option value="IPS" ${curMapel === 'IPS' ? 'selected' : ''}>IPS</option>
+            </select>
             <label><b>Ruang Kelas Ujian:</b></label>
-            <input id="swal-ruang" class="swal2-input" value="${p.ruangKelas||'Ruang 01'}" style="margin: 4px 0 10px; font-size: 13px;">
+            <input id="swal-ruang" class="swal2-input" value="${esc(p.ruangKelas||'Ruang 01')}" style="margin: 4px 0 10px; font-size: 13px;">
           </div>
         `,
         showCancelButton: true,
@@ -1032,6 +1038,8 @@
             sekolah: document.getElementById('swal-sekolah').value.trim(),
             alamatSekolah: document.getElementById('swal-alamat').value.trim(),
             noHpGuru: document.getElementById('swal-hp').value.trim(),
+            level: document.getElementById('swal-level').value,
+            mapel: document.getElementById('swal-mapel').value,
             ruangKelas: document.getElementById('swal-ruang').value.trim()
           };
         }
@@ -1043,7 +1051,7 @@
             const res = await fetch(apiUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'updatePeserta', ...result.value })
+              body: JSON.stringify({ action: 'updatePeserta', pin: currentPin, ...result.value })
             });
             const d = await res.json();
             if (d.status === 'success') {
@@ -1060,11 +1068,14 @@
     }
 
     // Hapus Data Peserta (Super Admin Only)
-    function hapusDataPeserta(noReg, nama) {
+    function hapusDataPeserta(noReg) {
       if (currentRole !== 'super_admin') {
         Swal.fire({ icon: 'warning', title: 'Akses Terbatas', text: 'Hanya Super Admin yang berhak menghapus data.' });
         return;
       }
+
+      const p = allPesertaList.find(item => item.noPendaftaran === noReg);
+      const nama = p ? p.nama : noReg;
 
       Swal.fire({
         title: 'Hapus Peserta?',
@@ -1081,7 +1092,7 @@
             const apiRes = await fetch(apiUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'deletePeserta', noPendaftaran: noReg })
+              body: JSON.stringify({ action: 'deletePeserta', pin: currentPin, noPendaftaran: noReg })
             });
             const data = await apiRes.json();
             if (data.status === 'success') {
@@ -1117,12 +1128,12 @@
         rowsHtml += `
           <tr>
             <td style="text-align: center; padding: 6px;">${idx + 1}</td>
-            <td style="padding: 6px; font-weight: bold;">${p.kodePeserta}</td>
-            <td style="padding: 6px; font-weight: bold;">${p.nama}</td>
-            <td style="padding: 6px;">${p.sekolah}</td>
-            <td style="padding: 6px; text-align: center;">${p.level}</td>
-            <td style="padding: 6px;">${p.mataPelajaran}</td>
-            <td style="padding: 6px; text-align: center; font-weight: bold;">${p.ruangKelas || '-'}</td>
+            <td style="padding: 6px; font-weight: bold;">${esc(p.kodePeserta)}</td>
+            <td style="padding: 6px; font-weight: bold;">${esc(p.nama)}</td>
+            <td style="padding: 6px;">${esc(p.sekolah)}</td>
+            <td style="padding: 6px; text-align: center;">${esc(p.level)}</td>
+            <td style="padding: 6px;">${esc(p.mataPelajaran)}</td>
+            <td style="padding: 6px; text-align: center; font-weight: bold;">${esc(p.ruangKelas || '-')}</td>
             <td style="padding: 6px; width: 80px; text-align: center; border-bottom: 1px dotted #999;">${idx % 2 === 0 ? (idx + 1) + '. ......' : ''}</td>
             <td style="padding: 6px; width: 80px; text-align: center; border-bottom: 1px dotted #999;">${idx % 2 !== 0 ? (idx + 1) + '. ......' : ''}</td>
           </tr>
@@ -1149,7 +1160,7 @@
           <table class="header-table">
             <tr>
               <td style="width: 70px; text-align: center;">
-                <img src="https://file.garden/aehADr1aKQol7cT9/Omega_Plus_Circular_Emblem-removebg-preview.png" width="65" height="65" />
+                <img src="logo.png" width="65" height="65" />
               </td>
               <td style="text-align: center;">
                 <h3 style="margin: 0; font-size: 13pt;">PANITIA OLIMPIADE AKADEMIK OMEGA PLUS 2026</h3>
@@ -1203,33 +1214,26 @@
 
     // CETAK REKAPITULASI A4
     function cetakRekapA4() {
-      const q = document.getElementById('filterSearch').value.toLowerCase();
-      const lvl = document.getElementById('filterLevel').value;
-      const mpl = document.getElementById('filterMapel').value;
-      const rng = document.getElementById('filterRuang').value;
-
-      const filtered = allPesertaList.filter(p => {
-        const matchText = (p.noPendaftaran + ' ' + p.nama + ' ' + p.sekolah).toLowerCase().includes(q);
-        const matchLvl = (lvl === 'Semua') || p.level.includes(lvl);
-        const matchMpl = (mpl === 'Semua') || p.mataPelajaran.includes(mpl);
-        const matchRng = (rng === 'Semua') || (p.ruangKelas === rng);
-        return matchText && matchLvl && matchMpl && matchRng;
-      });
+      const filtered = getFilteredPeserta();
+      if (filtered.length === 0) {
+        Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Belum ada data peserta yang sesuai dengan filter saat ini.' });
+        return;
+      }
 
       let rowsHtml = '';
       filtered.forEach((p, idx) => {
         rowsHtml += `
           <tr>
             <td style="text-align: center; padding: 5px;">${idx + 1}</td>
-            <td style="padding: 5px;">${p.noPendaftaran}</td>
-            <td style="padding: 5px; font-weight: bold;">${p.nama}</td>
-            <td style="padding: 5px;">${p.sekolah}</td>
-            <td style="padding: 5px; font-size: 8pt;">${p.alamatSekolah||'-'}</td>
-            <td style="padding: 5px;">${p.noHpGuru||'-'}</td>
-            <td style="padding: 5px;">${p.mataPelajaran}</td>
-            <td style="padding: 5px; font-family: monospace;">${p.kodePeserta}</td>
-            <td style="padding: 5px; text-align: center; font-weight: bold;">${p.ruangKelas||'-'}</td>
-            <td style="padding: 5px; text-align: center;">${p.status}</td>
+            <td style="padding: 5px;">${esc(p.noPendaftaran)}</td>
+            <td style="padding: 5px; font-weight: bold;">${esc(p.nama)}</td>
+            <td style="padding: 5px;">${esc(p.sekolah)}</td>
+            <td style="padding: 5px; font-size: 8pt;">${esc(p.alamatSekolah||'-')}</td>
+            <td style="padding: 5px;">${esc(p.noHpGuru||'-')}</td>
+            <td style="padding: 5px;">${esc(p.mataPelajaran)}</td>
+            <td style="padding: 5px; font-family: monospace;">${esc(p.kodePeserta)}</td>
+            <td style="padding: 5px; text-align: center; font-weight: bold;">${esc(p.ruangKelas||'-')}</td>
+            <td style="padding: 5px; text-align: center;">${esc(p.status)}</td>
           </tr>
         `;
       });
@@ -1281,28 +1285,57 @@
 
     // EKSPOR KE EXCEL / CSV
     function eksporExcelCSV() {
-      if (allPesertaList.length === 0) {
+      const listToExport = getFilteredPeserta();
+      if (listToExport.length === 0) {
         Swal.fire({ icon: 'info', title: 'Belum Ada Data Untuk Diekspor' });
         return;
       }
 
       let csv = '\uFEFFNo,No_Pendaftaran,Nama_Peserta,Asal_Sekolah,Alamat_Sekolah,No_WhatsApp_Guru,Level,Mata_Pelajaran,Kode_Peserta,Ruang_Kelas,Bukti_Transfer_Url,Status_Verifikasi,Catatan\n';
 
-      allPesertaList.forEach((p, idx) => {
+      listToExport.forEach((p, idx) => {
         const row = [
           idx + 1,
-          `"${p.noPendaftaran}"`,
-          `"${(p.nama || '').replace(/"/g, '""')}"`,
-          `"${(p.sekolah || '').replace(/"/g, '""')}"`,
-          `"${(p.alamatSekolah || '').replace(/"/g, '""')}"`,
-          `"${p.noHpGuru || ''}"`,
-          `"${p.level || ''}"`,
-          `"${p.mataPelajaran || ''}"`,
-          `"${p.kodePeserta || ''}"`,
-          `"${p.ruangKelas || ''}"`,
-          `"${p.buktiTransferUrl || ''}"`,
-          `"${p.status || ''}"`,
-          `"${(p.catatan || '').replace(/"/g, '""')}"`
+          csvCell(p.noPendaftaran),
+          csvCell(p.nama),
+          csvCell(p.sekolah),
+          csvCell(p.alamatSekolah),
+          csvCell(p.noHpGuru),
+          csvCell(p.level),
+          csvCell(p.mataPelajaran),
+          csvCell(p.kodePeserta),
+          csvCell(p.ruangKelas),
+          csvCell(p.buktiTransferUrl),
+          csvCell(p.status),
+          csvCell(p.catatan)
+        ];
+        csv += row.join(',') + '\n';
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `REKAP_PESERTA_OMEGA_PLUS_2026_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+        const row = [
+          idx + 1,
+          csvCell(p.noPendaftaran),
+          csvCell(p.nama),
+          csvCell(p.sekolah),
+          csvCell(p.alamatSekolah),
+          csvCell(p.noHpGuru),
+          csvCell(p.level),
+          csvCell(p.mataPelajaran),
+          csvCell(p.kodePeserta),
+          csvCell(p.ruangKelas),
+          csvCell(p.buktiTransferUrl),
+          csvCell(p.status),
+          csvCell(p.catatan)
         ];
         csv += row.join(',') + '\n';
       });

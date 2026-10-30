@@ -30,10 +30,6 @@ const CONFIG = {
   // Konfigurasi 30 Ruang Kelas Ujian
   TOTAL_RUANG_KELAS: 30,
 
-  // Autentikasi Dual-Role PIN Keamanan
-  PIN_PANITIA: "2026",     // Role 1: Panitia / Pengawas (View-Only / Cetak Absensi)
-  PIN_ADMIN: "8899",       // Role 2: Super Admin / Penanggung Jawab (Full Access)
-
   // Narahubung Resmi (Sesuai Brosur)
   CONTACTS: [
     { name: "Bapak Rasyidi", phone: "087781587155", wa: "6287781587155" },

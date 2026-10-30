@@ -110,6 +110,12 @@ export default {
 
     // Default: Sajikan aset statis Cloudflare Pages (otomatis melayani /pendaftaran, /login, /admin, dll)
     if (env && env.ASSETS) {
+      if (url.pathname.startsWith('/pendaftaran') || url.pathname.startsWith('/formpendaftaran')) {
+        return env.ASSETS.fetch(new Request(new URL('/index.html', request.url), request));
+      }
+      if (url.pathname.startsWith('/login')) {
+        return env.ASSETS.fetch(new Request(new URL('/admin.html', request.url), request));
+      }
       return env.ASSETS.fetch(request);
     }
 
