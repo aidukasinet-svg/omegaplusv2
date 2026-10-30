@@ -19,7 +19,7 @@ const CONFIG = {
   ORGANIZER: "SMP Negeri 1 Pamekasan",
   TAGLINE: "Semangat berprestasi, raih tiket emas kelas unggulan! ✦",
   TARGET: "Tingkat SD/MI Sederajat Se-Madura",
-  BIAYA_DAFTAR: 40000,
+  BIAYA_DAFTAR: 60000,
 
   // Rekening Pembayaran Resmi Klien (BCA Norma Dewi)
   BANK_NAME: "Bank BCA",
