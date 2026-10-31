@@ -96,7 +96,7 @@ function setupDatabase() {
       ["Tahun", "2026", "Tahun pelaksanaan"],
       ["Admin_PIN", "8899", "PIN Super Admin (Full Access: verifikasi, edit, hapus, export)"],
       ["Panitia_PIN", "2026", "PIN Panitia / Pengawas (View-Only: lihat data, filter ruang, cetak absen)"],
-      ["Biaya_Pendaftaran", "60000", "Biaya pendaftaran per peserta (Rupiah)"],
+      ["Biaya_Pendaftaran", "50000", "Biaya pendaftaran per peserta (Rupiah)"],
       ["Rekening_Pembayaran", "BCA 1921605205 a.n Norma Dewi", "Rekening resmi transfer bank panitia"],
       ["Total_Ruang_Kelas", "30", "Jumlah kapasitas ruang kelas ujian yang disediakan"],
       ["Kontak_1", "087781587155 (Bapak Rasyidi)", "Narahubung 1"],
