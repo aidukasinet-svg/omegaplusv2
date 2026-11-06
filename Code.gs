@@ -8,7 +8,7 @@
  * =========================================================================
  */
 
-var SPREADSHEET_ID = "1HirE660KgSHG5CWIQMs7jEDXHfV1s6L4tS3sHEfi0kg"; 
+var SPREADSHEET_ID = "1HirE660KgSHG5CWlQMs7jEDXHfV1s6L4tS3sHEfi0kg"; 
 
 var SHEET_NAMES = {
   PESERTA: "PESERTA",
@@ -258,7 +258,7 @@ function getOrCreateSheet(ss, sheetName) {
 }
 
 /**
- * Helper styling header sheet
+ * Helper styling header sheet & kunci format Plain Text pada kolom No_HP_Guru & Kode_Peserta
  */
 function styleHeader(sheet, headers, bgColor, textColor) {
   if (sheet.getLastRow() === 0) {
@@ -273,7 +273,80 @@ function styleHeader(sheet, headers, bgColor, textColor) {
              .setFontFamily("Arial")
              .setHorizontalAlignment("center");
   sheet.setFrozenRows(1);
+
+  // Kunci kolom F (No_HP_Guru) dan kolom I (Kode_Peserta) sebagai Plain Text (@) agar tidak diubah jadi Tanggal/Angka oleh Google Sheets
+  if (headers.length >= 9) {
+    try {
+      sheet.getRange("F2:F").setNumberFormat("@");
+      sheet.getRange("I2:I").setNumberFormat("@");
+    } catch (e) {}
+  }
+
   sheet.autoResizeColumns(1, headers.length);
+}
+
+/**
+ * Normalisasi Kode Peserta:
+ * Memperbaiki kode yang diubah jadi Tanggal oleh Google Sheets (02-02-2001 / Date object)
+ * maupun kode format lama (omega-0001-L1-01-2026) menjadi format baku XX-YY-ZZZ (contoh: 02-02-001)
+ */
+function normalizeKodePeserta(rawVal, mapel, level, fallbackSeq) {
+  var catInfo = getCategoryInfo(mapel, level);
+  var prefix = catInfo.mapelCode + "-" + catInfo.levelCode + "-";
+
+  // 1. Jika Google Sheets mengubahnya menjadi Date object (misal 02-02-001 -> Feb 2, 2001)
+  if (rawVal instanceof Date && !isNaN(rawVal.getTime())) {
+    var yr = rawVal.getFullYear();
+    var seqFromYear = yr % 1000;
+    if (seqFromYear <= 0) seqFromYear = fallbackSeq || 1;
+    return prefix + padZero(seqFromYear, 3);
+  }
+
+  var str = String(rawVal == null ? "" : rawVal).trim().replace(/^'+/, "");
+
+  // 2. Jika string sudah berpola XX-YY-ZZZ atau XX-YY-2ZZZ
+  var exactMatch = str.match(/^(\d{2})-(\d{2})-(\d{1,4})$/);
+  if (exactMatch) {
+    var seqRaw = exactMatch[3];
+    var seqNum = parseInt(seqRaw, 10);
+    // Jika 4 digit dimulai angka 2 (misal 2001 akibat konversi tahun Google Sheets dari 001)
+    if (seqRaw.length === 4 && seqNum >= 2000 && seqNum < 2999) {
+      seqNum = seqNum - 2000;
+    }
+    if (seqNum <= 0) seqNum = fallbackSeq || 1;
+    return exactMatch[1] + "-" + exactMatch[2] + "-" + padZero(seqNum, 3);
+  }
+
+  // 3. Jika string adalah hasil Date.toString() (contoh: "Fri Feb 02 2001 00:00:00 GMT+0700...")
+  var dateStrMatch = str.match(/\b2(\d{3})\b/);
+  if (str.indexOf("GMT") !== -1 && dateStrMatch) {
+    var seqFromDateStr = parseInt(dateStrMatch[1], 10);
+    if (seqFromDateStr <= 0) seqFromDateStr = fallbackSeq || 1;
+    return prefix + padZero(seqFromDateStr, 3);
+  }
+
+  // 4. Jika format lama (contoh: omega-0001-L1-01-2026)
+  if (fallbackSeq && fallbackSeq > 0) {
+    return prefix + padZero(fallbackSeq, 3);
+  }
+  var oldMatch = str.match(/omega-(\d+)/i);
+  if (oldMatch) {
+    return prefix + padZero(parseInt(oldMatch[1], 10), 3);
+  }
+
+  return str || (prefix + padZero(fallbackSeq || 1, 3));
+}
+
+/**
+ * Normalisasi Nomor HP Guru:
+ * Memastikan angka 0 di depan tidak hilang (misal 81233713000 -> 081233713000)
+ */
+function normalizeNoHp(rawVal) {
+  var s = String(rawVal == null ? "" : rawVal).trim().replace(/^'+/, "");
+  if (/^8\d{7,13}$/.test(s)) {
+    return "0" + s;
+  }
+  return s;
 }
 
 /**
@@ -349,7 +422,8 @@ function recalculateCountersAndStats(ss) {
 
       var lvl = String(range[i][5] || "");
       var mapel = String(range[i][6] || "");
-      var kodePeserta = String(range[i][7] || "");
+      var info = getCategoryInfo(mapel, lvl);
+      var kodePeserta = normalizeKodePeserta(range[i][7], mapel, lvl, (counters[info.catKey] || 0) + 1);
       var ruang = String(range[i][8] || "");
       var status = String(range[i][10] || "");
 
@@ -420,20 +494,45 @@ function syncAllCategorySheets(ss) {
   }
 
   if (lastRow > 1) {
+    try {
+      masterSheet.getRange(2, 6, lastRow - 1, 1).setNumberFormat("@");
+      masterSheet.getRange(2, 9, lastRow - 1, 1).setNumberFormat("@");
+    } catch (e) {}
+
     var allData = masterSheet.getRange(2, 1, lastRow - 1, 14).getValues();
+    var catSeq = {};
+    var writeBackMaster = [];
+
     for (var i = 0; i < allData.length; i++) {
       var r = allData[i];
       var lvl = String(r[6] || "");
       var mpl = String(r[7] || "");
       var info = getCategoryInfo(mpl, lvl);
+      catSeq[info.catKey] = (catSeq[info.catKey] || 0) + 1;
+
+      var cleanHp = normalizeNoHp(r[5]);
+      var cleanKode = normalizeKodePeserta(r[8], mpl, lvl, catSeq[info.catKey]);
+
+      r[5] = "'" + cleanHp;
+      r[8] = "'" + cleanKode;
+      r[9] = "-"; // Pastikan kolom ruang dikosongkan ("-") sesuai kesepakatan
+
+      writeBackMaster.push(r);
       if (categoryData[info.sheetName]) {
         categoryData[info.sheetName].push(r);
       }
     }
 
+    // Perbaiki juga Sheet Master agar kode yang sempat jadi Tanggal / format lama berubah permanen jadi teks XX-YY-ZZZ
+    masterSheet.getRange(2, 1, writeBackMaster.length, 14).setValues(writeBackMaster);
+
     for (var name in categoryData) {
       if (categoryData[name].length > 0) {
         var targetSheet = ss.getSheetByName(name);
+        try {
+          targetSheet.getRange(2, 6, categoryData[name].length, 1).setNumberFormat("@");
+          targetSheet.getRange(2, 9, categoryData[name].length, 1).setNumberFormat("@");
+        } catch (e) {}
         targetSheet.getRange(2, 1, categoryData[name].length, 14).setValues(categoryData[name]);
         targetSheet.autoResizeColumns(1, 14);
       }
@@ -737,6 +836,7 @@ function handleDaftarPesertaTurbo(data) {
       // 6. Tulis Atomic Single-Row ke Sheet PESERTA (Master) di dalam lock
       var ss = getDatabase();
       var sheetMaster = ss.getSheetByName(SHEET_NAMES.PESERTA);
+      var cleanHp = normalizeNoHp(noHpGuru);
 
       var rowValues = [
         timestamp,
@@ -744,10 +844,10 @@ function handleDaftarPesertaTurbo(data) {
         sanitizeSheetCell(nama),
         sanitizeSheetCell(sekolah),
         sanitizeSheetCell(alamatSekolah),
-        sanitizeSheetCell(noHpGuru),
+        "'" + cleanHp,
         sanitizeSheetCell(level),
         sanitizeSheetCell(mapel),
-        kodePeserta,
+        "'" + kodePeserta,
         ruangKelas,
         buktiTransferUrl,
         statusVerif,
@@ -864,6 +964,25 @@ function handleGetPesertaList(params) {
 
   // Baca 14 kolom lengkap
   var dataRange = sheet.getRange(startRow, 1, numRows, 14).getValues();
+
+  // Auto-heal jika ada baris yang sempat diubah jadi Date oleh Google Sheets atau masih berformat lama (omega-...)
+  var needsAutoHeal = false;
+  for (var h = 0; h < dataRange.length; h++) {
+    var rawK = dataRange[h][8];
+    var rawR = String(dataRange[h][9] || "");
+    if (rawK instanceof Date || /^omega-/i.test(String(rawK)) || /^(\d{2})-(\d{2})-2(\d{3})$/.test(String(rawK)) || (rawR && rawR !== "-")) {
+      needsAutoHeal = true;
+      break;
+    }
+  }
+  if (needsAutoHeal) {
+    try {
+      syncAllCategorySheets(ss);
+      recalculateCountersAndStats(ss);
+      dataRange = sheet.getRange(startRow, 1, numRows, 14).getValues();
+    } catch (e) {}
+  }
+
   var list = [];
 
   var filterLevel = params ? params.level : "";
@@ -881,11 +1000,11 @@ function handleGetPesertaList(params) {
     var nama = String(r[2]);
     var sekolah = String(r[3]);
     var alamatSekolah = String(r[4] || "");
-    var noHpGuru = String(r[5] || "");
+    var noHpGuru = normalizeNoHp(r[5]);
     var level = String(r[6] || "");
     var mapel = String(r[7] || "");
-    var kodePeserta = String(r[8] || "");
-    var ruangKelas = String(r[9] || "");
+    var kodePeserta = normalizeKodePeserta(r[8], mapel, level);
+    var ruangKelas = "-";
     var buktiUrl = String(r[10] || "");
     var status = String(r[11] || "");
     var catatan = String(r[12] || "");
@@ -942,10 +1061,12 @@ function handleCekStatus(keyword) {
 
   for (var i = dataRange.length - 1; i >= 0; i--) {
     var r = dataRange[i];
+    var cleanHp = normalizeNoHp(r[5]);
+    var cleanKode = normalizeKodePeserta(r[8], r[7], r[6]);
     var noReg = String(r[1]).toLowerCase();
     var nama = String(r[2]).toLowerCase();
-    var noHpGuru = String(r[5]).toLowerCase();
-    var kodePeserta = String(r[8]).toLowerCase();
+    var noHpGuru = cleanHp.toLowerCase();
+    var kodePeserta = cleanKode.toLowerCase();
 
     if (noReg === query || noHpGuru === query || kodePeserta === query || (query.length >= 4 && nama.indexOf(query) !== -1)) {
       results.push({
@@ -953,11 +1074,11 @@ function handleCekStatus(keyword) {
         nama: r[2],
         sekolah: r[3],
         alamatSekolah: r[4],
-        noHpGuru: r[5],
+        noHpGuru: cleanHp,
         level: r[6],
         mataPelajaran: r[7],
-        kodePeserta: r[8],
-        ruangKelas: r[9],
+        kodePeserta: cleanKode,
+        ruangKelas: "-",
         buktiTransferUrl: r[10],
         status: r[11],
         catatan: r[12]
@@ -1059,10 +1180,11 @@ function handleUpdatePeserta(payload) {
     if (payload.nama) rowData[0] = sanitizeSheetCell(String(payload.nama).toUpperCase());
     if (payload.sekolah) rowData[1] = sanitizeSheetCell(String(payload.sekolah).toUpperCase());
     if (payload.alamatSekolah) rowData[2] = sanitizeSheetCell(String(payload.alamatSekolah));
-    if (payload.noHpGuru) rowData[3] = sanitizeSheetCell(String(payload.noHpGuru));
+    if (payload.noHpGuru) rowData[3] = "'" + normalizeNoHp(payload.noHpGuru);
     if (payload.level) rowData[4] = sanitizeSheetCell(String(payload.level));
     if (payload.mapel) rowData[5] = sanitizeSheetCell(String(payload.mapel));
-    if (payload.ruangKelas) rowData[7] = sanitizeSheetCell(String(payload.ruangKelas));
+    rowData[6] = "'" + normalizeKodePeserta(rowData[6], rowData[5], rowData[4]);
+    rowData[7] = "-";
 
     sheet.getRange(targetRow, 3, 1, 8).setValues([rowData]);
     SpreadsheetApp.flush();

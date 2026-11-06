@@ -781,7 +781,7 @@
 
       <div class="hero-title-box">
         <h1>PORTAL PENDAFTARAN RESMI OMEGA PLUS 2026</h1>
-        <p>Matematika, IPA, Bahasa Inggris, dan IPS Tingkat SD/MI Sederajat Se-Madura. Isi formulir pendaftaran langsung di bawah ini untuk mendapatkan alokasi ruang ujian dan kwitansi resmi.</p>
+        <p>Matematika, IPA, Bahasa Inggris, dan IPS Tingkat SD/MI Sederajat Se-Madura. Isi formulir pendaftaran langsung di bawah ini untuk mendapatkan nomor kode peserta dan kwitansi resmi.</p>
       </div>
 
       <!-- TABS -->
@@ -1231,7 +1231,7 @@
 
       Swal.fire({
         title: 'Mendaftarkan Peserta...',
-        html: 'Mohon tunggu beberapa detik, sistem sedang mengalokasikan ruang kelas dan menerbitkan kwitansi resmi...',
+        html: 'Mohon tunggu beberapa detik, sistem sedang memproses pendaftaran dan menerbitkan kwitansi resmi...',
         allowOutsideClick: false,
         didOpen: () => { Swal.showLoading(); }
       });
@@ -1275,12 +1275,60 @@
       }
     }
 
+    // Helper Normalisasi Kode Peserta & No HP
+    function formatKodePesertaClean(rawKode, mapel, level) {
+      const mpl = String(mapel || '');
+      const lvl = String(level || '');
+      let mCode = '01';
+      if (mpl.includes('Inggris')) mCode = '02';
+      else if (mpl.includes('IPA')) mCode = '03';
+      else if (mpl.includes('IPS')) mCode = '04';
+      const lCode = lvl.includes('1') ? '01' : '02';
+      const prefix = `${mCode}-${lCode}-`;
+      const pad3 = (n) => String(n).padStart(3, '0');
+
+      const str = String(rawKode ?? '').trim().replace(/^'+/, '');
+
+      const exact = str.match(/^(\d{2})-(\d{2})-(\d{1,4})$/);
+      if (exact) {
+        let num = parseInt(exact[3], 10);
+        if (exact[3].length === 4 && num >= 2000 && num < 2999) num -= 2000;
+        if (num <= 0) num = 1;
+        return `${exact[1]}-${exact[2]}-${pad3(num)}`;
+      }
+
+      const yrMatch = str.match(/\b2(\d{3})\b/);
+      if ((str.includes('GMT') || str.includes('00:00:00')) && yrMatch) {
+        let num = parseInt(yrMatch[1], 10);
+        if (num <= 0) num = 1;
+        return prefix + pad3(num);
+      }
+
+      if (/^omega-/i.test(str)) {
+        const om = str.match(/omega-(\d+)/i);
+        const num = om ? parseInt(om[1], 10) : 1;
+        return prefix + pad3(num);
+      }
+
+      return str || (prefix + '001');
+    }
+
+    function formatNoHpClean(rawHp) {
+      const s = String(rawHp ?? '').trim().replace(/^'+/, '');
+      if (/^8\d{7,13}$/.test(s)) return '0' + s;
+      return s;
+    }
+
     // Tampilkan Kwitansi Digital
     function showDigitalReceipt(data) {
-      lastRegisteredData = data;
+      const mapelVal = data.mapel || data.mataPelajaran || '-';
+      const levelVal = data.level || '-';
+      const cleanKode = formatKodePesertaClean(data.kodePeserta, mapelVal, levelVal);
+      const cleanHp = formatNoHpClean(data.noHpGuru);
+
+      lastRegisteredData = { ...data, kodePeserta: cleanKode, noHpGuru: cleanHp };
       switchMainTab('form');
 
-      const mapelVal = data.mapel || data.mataPelajaran || '-';
       const statusVal = data.status || data.statusVerifikasi || 'Menunggu Verifikasi Bank';
       const isLunas = (statusVal === 'Lunas' || statusVal === 'Terverifikasi');
 
@@ -1288,10 +1336,10 @@
       document.getElementById('receiptNama').innerText = data.nama || '-';
       document.getElementById('receiptSekolah').innerText = data.sekolah || '-';
       document.getElementById('receiptAlamat').innerText = data.alamatSekolah || '-';
-      document.getElementById('receiptHpGuru').innerText = data.noHpGuru || '-';
-      document.getElementById('receiptLevel').innerText = data.level || '-';
+      document.getElementById('receiptHpGuru').innerText = cleanHp || '-';
+      document.getElementById('receiptLevel').innerText = levelVal;
       document.getElementById('receiptMapel').innerText = mapelVal;
-      document.getElementById('receiptKodePeserta').innerText = data.kodePeserta || '-';
+      document.getElementById('receiptKodePeserta').innerText = cleanKode || '-';
 
       const badge = document.getElementById('receiptStatusBadge');
       if (badge) {
@@ -1347,9 +1395,13 @@
         const result = await res.json();
 
         if (result.status === 'success' && result.data && result.data.length > 0) {
-          statusSearchResults = result.data;
+          statusSearchResults = result.data.map(item => ({
+            ...item,
+            noHpGuru: formatNoHpClean(item.noHpGuru),
+            kodePeserta: formatKodePesertaClean(item.kodePeserta, item.mataPelajaran || item.mapel, item.level)
+          }));
           let html = '';
-          result.data.forEach((item, idx) => {
+          statusSearchResults.forEach((item, idx) => {
             const isLunas = (item.status === 'Lunas' || item.status === 'Terverifikasi');
             const badgeClass = isLunas ? 'background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;' : 'background: #fef3c7; color: #92400e; border: 1px solid #fde68a;';
 

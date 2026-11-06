@@ -630,7 +630,7 @@
         </button>
 
         <div class="pin-hint-box">
-          <div>&bull; <strong>PIN Panitia:</strong> Mode Lihat Saja, filter 30 ruang & cetak absensi.</div>
+          <div>&bull; <strong>PIN Panitia:</strong> Mode Lihat Saja, filter 8 kategori lomba & cetak daftar hadir.</div>
           <div style="margin-top: 4px;">&bull; <strong>PIN Super Admin:</strong> Akses penuh verifikasi lunas, edit data, dan export Excel.</div>
         </div>
 
@@ -784,12 +784,6 @@
             <option value="IPS">IPS</option>
           </select>
 
-          <!-- FILTER RUANG KELAS (RUANG 01 - 30) -->
-          <select id="filterRuang" class="filter-select" onchange="filterLocalPeserta()">
-            <option value="Semua">Semua Ruang (01–30)</option>
-            <!-- Generated via JS for Ruang 01 to Ruang 30 -->
-          </select>
-
           <!-- FILTER STATUS -->
           <select id="filterStatus" class="filter-select" onchange="filterLocalPeserta()">
             <option value="Semua">Semua Status</option>
@@ -803,7 +797,7 @@
             <i data-lucide="printer" style="width: 14px; height: 14px;"></i> CETAK REKAP A4
           </button>
           <button class="btn btn-primary" onclick="cetakPresensiRuang()">
-            <i data-lucide="clipboard-list" style="width: 14px; height: 14px;"></i> CETAK PRESENSI RUANG
+            <i data-lucide="clipboard-list" style="width: 14px; height: 14px;"></i> CETAK DAFTAR HADIR
           </button>
           <button class="btn btn-secondary" onclick="eksporExcelCSV()">
             <i data-lucide="download" style="width: 14px; height: 14px;"></i> EKSPOR EXCEL
@@ -822,7 +816,6 @@
               <th>No. WA Guru</th>
               <th>Level & Mapel</th>
               <th>Kode Peserta</th>
-              <th>Ruang Kelas</th>
               <th>Bukti TF</th>
               <th>Status</th>
               <th style="text-align: center;">Aksi</th>
@@ -830,7 +823,7 @@
           </thead>
           <tbody id="pesertaTableBody">
             <tr>
-              <td colspan="10" style="text-align: center; padding: 30px; color: #657c94;">
+              <td colspan="9" style="text-align: center; padding: 30px; color: #657c94;">
                 Memuat data peserta dari Google Sheets...
               </td>
             </tr>
@@ -865,18 +858,51 @@
       return `"${s.replace(/"/g, '""')}"`;
     }
 
-    // Populate Dropdown Ruang
-    const selectRuang = document.getElementById('filterRuang');
-    const optBelum = document.createElement('option');
-    optBelum.value = '-';
-    optBelum.innerText = 'Belum Diatur (-)';
-    selectRuang.appendChild(optBelum);
-    for (let i = 1; i <= 30; i++) {
-      const pad = i < 10 ? '0' + i : i;
-      const opt = document.createElement('option');
-      opt.value = 'Ruang ' + pad;
-      opt.innerText = 'Ruang ' + pad;
-      selectRuang.appendChild(opt);
+    // Helper Normalisasi Kode Peserta & No HP di sisi Frontend (mencegah tampilan tanggal Fri Feb 02 2001 / angka 2001)
+    function formatKodePesertaClean(rawKode, mapel, level, fallbackSeq) {
+      const mpl = String(mapel || '');
+      const lvl = String(level || '');
+      let mCode = '01';
+      if (mpl.includes('Inggris')) mCode = '02';
+      else if (mpl.includes('IPA')) mCode = '03';
+      else if (mpl.includes('IPS')) mCode = '04';
+      const lCode = lvl.includes('1') ? '01' : '02';
+      const prefix = `${mCode}-${lCode}-`;
+      const pad3 = (n) => String(n).padStart(3, '0');
+
+      const str = String(rawKode ?? '').trim().replace(/^'+/, '');
+
+      // Jika pola XX-YY-ZZZ atau XX-YY-2ZZZ
+      const exact = str.match(/^(\d{2})-(\d{2})-(\d{1,4})$/);
+      if (exact) {
+        let num = parseInt(exact[3], 10);
+        if (exact[3].length === 4 && num >= 2000 && num < 2999) num -= 2000;
+        if (num <= 0) num = fallbackSeq || 1;
+        return `${exact[1]}-${exact[2]}-${pad3(num)}`;
+      }
+
+      // Jika terformat tanggal JS (contoh: "Fri Feb 02 2001 00:00:00 GMT+0700...")
+      const yrMatch = str.match(/\b2(\d{3})\b/);
+      if ((str.includes('GMT') || str.includes('00:00:00')) && yrMatch) {
+        let num = parseInt(yrMatch[1], 10);
+        if (num <= 0) num = fallbackSeq || 1;
+        return prefix + pad3(num);
+      }
+
+      // Jika format lama omega-0001-...
+      if (/^omega-/i.test(str)) {
+        const om = str.match(/omega-(\d+)/i);
+        const num = fallbackSeq || (om ? parseInt(om[1], 10) : 1);
+        return prefix + pad3(num);
+      }
+
+      return str || (prefix + pad3(fallbackSeq || 1));
+    }
+
+    function formatNoHpClean(rawHp) {
+      const s = String(rawHp ?? '').trim().replace(/^'+/, '');
+      if (/^8\d{7,13}$/.test(s)) return '0' + s;
+      return s;
     }
 
     // Cek Status Login Saat Load
@@ -1018,7 +1044,21 @@
         const resPeserta = await fetch(`${apiUrl}?action=getPesertaList&limit=5000&pin=${encodeURIComponent(currentPin || '')}`);
         const dataPeserta = await resPeserta.json();
         if (dataPeserta.status === 'success') {
-          allPesertaList = dataPeserta.data || [];
+          const rawList = dataPeserta.data || [];
+          // Normalisasi setiap baris (dari urutan terlama ke terbaru agar sequence urut)
+          const seqTracker = {};
+          const reversed = [...rawList].reverse().map(p => {
+            const mpl = String(p.mataPelajaran || '');
+            const lvl = String(p.level || '');
+            const catKey = `${mpl}_${lvl}`;
+            seqTracker[catKey] = (seqTracker[catKey] || 0) + 1;
+            return {
+              ...p,
+              noHpGuru: formatNoHpClean(p.noHpGuru),
+              kodePeserta: formatKodePesertaClean(p.kodePeserta, mpl, lvl, seqTracker[catKey])
+            };
+          });
+          allPesertaList = reversed.reverse();
           updateCategoryBadges();
           renderPesertaTable(getFilteredPeserta());
         } else if (dataPeserta.message && dataPeserta.message.includes('PIN')) {
@@ -1036,7 +1076,7 @@
     function renderPesertaTable(list) {
       const tbody = document.getElementById('pesertaTableBody');
       if (list.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 25px; color: #657c94;">Belum ada pendaftaran yang sesuai filter.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 25px; color: #657c94;">Belum ada pendaftaran yang sesuai filter.</td></tr>';
         return;
       }
 
@@ -1066,7 +1106,6 @@
               <span style="font-size: 11px; color: #285891;">${esc(p.mataPelajaran)}</span>
             </td>
             <td><span style="color: #047857; font-weight: 700; font-family: monospace;">${esc(p.kodePeserta)}</span></td>
-            <td><span class="badge-ruang">${esc(p.ruangKelas || '-')}</span></td>
             <td>${buktiLink}</td>
             <td><span class="badge-status ${badgeClass}">${esc(p.status)}</span></td>
             <td style="text-align: center;">
@@ -1101,16 +1140,14 @@
       const q = document.getElementById('filterSearch').value.toLowerCase();
       const lvl = document.getElementById('filterLevel').value;
       const mpl = document.getElementById('filterMapel').value;
-      const rng = document.getElementById('filterRuang').value;
       const st = document.getElementById('filterStatus').value;
 
       return allPesertaList.filter(p => {
         const matchText = (p.noPendaftaran + ' ' + p.nama + ' ' + p.sekolah + ' ' + (p.alamatSekolah||'') + ' ' + (p.noHpGuru||'') + ' ' + p.kodePeserta).toLowerCase().includes(q);
         const matchLvl = (lvl === 'Semua') || p.level.includes(lvl);
         const matchMpl = (mpl === 'Semua') || p.mataPelajaran.includes(mpl);
-        const matchRng = (rng === 'Semua') || (p.ruangKelas === rng);
         const matchSt = (st === 'Semua') || (p.status.includes(st));
-        return matchText && matchLvl && matchMpl && matchRng && matchSt;
+        return matchText && matchLvl && matchMpl && matchSt;
       });
     }
 
@@ -1305,8 +1342,6 @@
               <option value="Bahasa Inggris" ${curMapel === 'Bahasa Inggris' ? 'selected' : ''}>Bahasa Inggris</option>
               <option value="IPS" ${curMapel === 'IPS' ? 'selected' : ''}>IPS</option>
             </select>
-            <label><b>Ruang Kelas Ujian:</b></label>
-            <input id="swal-ruang" class="swal2-input" value="${esc(p.ruangKelas||'-')}" placeholder="Atur manual (contoh: Ruang 01)" style="margin: 4px 0 10px; font-size: 13px;">
           </div>
         `,
         showCancelButton: true,
@@ -1320,8 +1355,7 @@
             alamatSekolah: document.getElementById('swal-alamat').value.trim(),
             noHpGuru: document.getElementById('swal-hp').value.trim(),
             level: document.getElementById('swal-level').value,
-            mapel: document.getElementById('swal-mapel').value,
-            ruangKelas: document.getElementById('swal-ruang').value.trim()
+            mapel: document.getElementById('swal-mapel').value
           };
         }
       }).then(async (result) => {
@@ -1389,18 +1423,17 @@
       });
     }
 
-    // CETAK PRESENSI RUANG UJIAN (FORMAT RESMI PENGAWAS RUANG)
+    // CETAK DAFTAR HADIR / PRESENSI PESERTA UJIAN
     function cetakPresensiRuang() {
-      const selectedRuang = document.getElementById('filterRuang').value;
-      const targetRuang = (selectedRuang !== 'Semua') ? selectedRuang : 'Semua Ruang';
-
-      let listToPrint = allPesertaList;
-      if (selectedRuang !== 'Semua') {
-        listToPrint = allPesertaList.filter(p => p.ruangKelas === selectedRuang);
-      }
+      const listToPrint = getFilteredPeserta();
+      const lvl = document.getElementById('filterLevel').value;
+      const mpl = document.getElementById('filterMapel').value;
+      const labelKategori = (mpl !== 'Semua' || lvl !== 'Semua')
+        ? `${mpl !== 'Semua' ? mpl : 'Semua Mapel'} - ${lvl !== 'Semua' ? lvl : 'Semua Level'}`
+        : 'Semua Kategori';
 
       if (listToPrint.length === 0) {
-        Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: `Belum ada peserta yang dialokasikan di ${targetRuang}.` });
+        Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Belum ada peserta yang sesuai dengan filter saat ini.' });
         return;
       }
 
@@ -1414,7 +1447,6 @@
             <td style="padding: 6px;">${esc(p.sekolah)}</td>
             <td style="padding: 6px; text-align: center;">${esc(p.level)}</td>
             <td style="padding: 6px;">${esc(p.mataPelajaran)}</td>
-            <td style="padding: 6px; text-align: center; font-weight: bold;">${esc(p.ruangKelas || '-')}</td>
             <td style="padding: 6px; width: 80px; text-align: center; border-bottom: 1px dotted #999;">${idx % 2 === 0 ? (idx + 1) + '. ......' : ''}</td>
             <td style="padding: 6px; width: 80px; text-align: center; border-bottom: 1px dotted #999;">${idx % 2 !== 0 ? (idx + 1) + '. ......' : ''}</td>
           </tr>
@@ -1426,7 +1458,7 @@
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Daftar Hadir Peserta - ${targetRuang}</title>
+          <title>Daftar Hadir Peserta - ${esc(labelKategori)}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 25px; font-size: 10pt; color: #000; }
             .header-table { width: 100%; border-bottom: 3px double #000; padding-bottom: 10px; margin-bottom: 15px; }
@@ -1453,7 +1485,7 @@
 
           <div style="text-align: center; margin-bottom: 15px;">
             <h3 style="margin: 0; text-transform: uppercase;">DAFTAR HADIR & PRESENSI PESERTA UJIAN</h3>
-            <div style="font-weight: bold; margin-top: 4px; font-size: 11pt;">ALOKASI: ${targetRuang.toUpperCase()} (TOTAL: ${listToPrint.length} PESERTA)</div>
+            <div style="font-weight: bold; margin-top: 4px; font-size: 11pt;">KATEGORI: ${esc(labelKategori.toUpperCase())} (TOTAL: ${listToPrint.length} PESERTA)</div>
           </div>
 
           <table class="data">
@@ -1465,7 +1497,6 @@
                 <th>ASAL SEKOLAH</th>
                 <th>TINGKAT</th>
                 <th>MAPEL</th>
-                <th>RUANG</th>
                 <th colspan="2">TANDA TANGAN</th>
               </tr>
             </thead>
@@ -1477,11 +1508,11 @@
           <table class="sig-table">
             <tr>
               <td>
-                Mengetahui,<br>Pengawas Ruang 1<br><br><br><br>
+                Mengetahui,<br>Pengawas Ujian 1<br><br><br><br>
                 ( ___________________________ )
               </td>
               <td>
-                Pamekasan, ......................... 2026<br>Pengawas Ruang 2<br><br><br><br>
+                Pamekasan, ......................... 2026<br>Pengawas Ujian 2<br><br><br><br>
                 ( ___________________________ )
               </td>
             </tr>
@@ -1513,7 +1544,6 @@
             <td style="padding: 5px;">${esc(p.noHpGuru||'-')}</td>
             <td style="padding: 5px;">${esc(p.mataPelajaran)}</td>
             <td style="padding: 5px; font-family: monospace;">${esc(p.kodePeserta)}</td>
-            <td style="padding: 5px; text-align: center; font-weight: bold;">${esc(p.ruangKelas||'-')}</td>
             <td style="padding: 5px; text-align: center;">${esc(p.status)}</td>
           </tr>
         `;
@@ -1549,7 +1579,6 @@
                 <th>No. WA Guru</th>
                 <th>Mapel</th>
                 <th>Kode Peserta</th>
-                <th>Ruang</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -1572,7 +1601,7 @@
         return;
       }
 
-      let csv = '\uFEFFNo,No_Pendaftaran,Nama_Peserta,Asal_Sekolah,Alamat_Sekolah,No_WhatsApp_Guru,Level,Mata_Pelajaran,Kode_Peserta,Ruang_Kelas,Bukti_Transfer_Url,Status_Verifikasi,Catatan\n';
+      let csv = '\uFEFFNo,No_Pendaftaran,Nama_Peserta,Asal_Sekolah,Alamat_Sekolah,No_WhatsApp_Guru,Level,Mata_Pelajaran,Kode_Peserta,Bukti_Transfer_Url,Status_Verifikasi,Catatan\n';
 
       listToExport.forEach((p, idx) => {
         const row = [
@@ -1585,7 +1614,6 @@
           csvCell(p.level),
           csvCell(p.mataPelajaran),
           csvCell(p.kodePeserta),
-          csvCell(p.ruangKelas),
           csvCell(p.buktiTransferUrl),
           csvCell(p.status),
           csvCell(p.catatan)
