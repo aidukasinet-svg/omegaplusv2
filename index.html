@@ -72,13 +72,17 @@
       font-family: 'Work Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
 
+    html, body {
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
     body {
       background-color: var(--color-bg-page);
       color: var(--color-text-main);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      overflow-x: hidden;
       line-height: 1.5;
     }
 
@@ -202,6 +206,7 @@
     .tab-nav-wrapper {
       display: flex;
       justify-content: center;
+      flex-wrap: wrap;
       gap: 8px;
       margin-top: 1.25rem;
     }
@@ -214,12 +219,53 @@
       cursor: pointer;
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 8px;
       border: 1px solid rgba(255, 255, 255, 0.25);
       background: rgba(255, 255, 255, 0.12);
       color: #ffffff;
       transition: all 0.2s ease;
       backdrop-filter: blur(8px);
+    }
+
+    @media (max-width: 640px) {
+      .header-hero {
+        padding: 1.25rem 0.875rem 3rem;
+      }
+      .header-top {
+        gap: 0.65rem;
+        margin-bottom: 1rem;
+      }
+      .school-logo-badge {
+        width: 44px;
+        height: 44px;
+      }
+      .school-logo-badge img {
+        width: 38px;
+        height: 38px;
+      }
+      .school-text h3 {
+        font-size: 0.95rem;
+      }
+      .school-text p {
+        font-size: 0.7rem;
+      }
+      .header-badge-tag {
+        font-size: 0.68rem;
+        padding: 4px 10px;
+      }
+      .tab-nav-wrapper {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        width: 100%;
+      }
+      .tab-btn {
+        width: 100%;
+        padding: 10px 8px;
+        font-size: 0.8rem;
+        gap: 6px;
+      }
     }
 
     .tab-btn:hover {
@@ -588,6 +634,8 @@
       padding: 2rem;
       box-shadow: var(--shadow-lift);
       position: relative;
+      overflow: hidden;
+      max-width: 100%;
     }
 
     .receipt-watermark {
@@ -595,7 +643,7 @@
       top: 50%; left: 50%;
       transform: translate(-50%, -50%);
       opacity: 0.05;
-      width: 320px;
+      width: min(300px, 75%);
       pointer-events: none;
     }
 
@@ -603,47 +651,59 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
       border-bottom: 2px solid var(--color-primary-royal);
       padding-bottom: 1.25rem;
       margin-bottom: 1.5rem;
-      gap: 1rem;
+      gap: 0.875rem;
     }
 
     .receipt-logo {
       display: flex;
       align-items: center;
       gap: 12px;
+      min-width: 0;
+      flex: 1 1 220px;
     }
 
     .receipt-logo img {
-      width: 60px;
-      height: 60px;
+      width: 56px;
+      height: 56px;
       object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .receipt-title-text {
+      min-width: 0;
     }
 
     .receipt-title-text h3 {
-      font-size: 1.25rem;
+      font-size: clamp(1rem, 3.2vw, 1.25rem);
       font-weight: 800;
       color: var(--color-primary-navy);
       margin: 0;
+      line-height: 1.25;
+      word-break: break-word;
     }
 
     .receipt-title-text p {
-      font-size: 0.8125rem;
+      font-size: 0.775rem;
       color: var(--color-primary-royal);
       font-weight: 700;
       margin-top: 2px;
+      line-height: 1.3;
     }
 
     .receipt-badge-status {
       padding: 6px 14px;
       border-radius: var(--radius-pill);
-      font-size: 0.8125rem;
+      font-size: 0.775rem;
       font-weight: 800;
       background: #fef3c7;
       color: #92400e;
       border: 1px solid #fde68a;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .receipt-badge-status.lunas {
@@ -656,7 +716,7 @@
       background: linear-gradient(135deg, #19365f 0%, #285891 100%);
       color: #ffffff;
       border-radius: var(--radius-sm);
-      padding: 1.25rem;
+      padding: 1.25rem 1rem;
       text-align: center;
       margin: 1.25rem 0;
       border: 2px solid var(--color-accent-gold);
@@ -664,24 +724,25 @@
     }
 
     .room-highlight-banner .room-title {
-      font-size: 0.8125rem;
+      font-size: 0.775rem;
       font-weight: 700;
-      letter-spacing: 1.5px;
+      letter-spacing: 1.2px;
       text-transform: uppercase;
       color: var(--color-accent-gold);
     }
 
     .room-highlight-banner .room-val {
       font-family: 'Plus Jakarta Sans', sans-serif;
-      font-size: 2.2rem;
+      font-size: clamp(1.65rem, 6vw, 2.2rem);
       font-weight: 900;
       color: #ffffff;
       margin: 4px 0;
       letter-spacing: 1px;
+      word-break: break-word;
     }
 
     .room-highlight-banner .code-val {
-      font-size: 0.95rem;
+      font-size: 0.875rem;
       color: #e2e8f0;
       font-weight: 600;
     }
@@ -691,23 +752,99 @@
       border-collapse: collapse;
       margin: 1.25rem 0;
       font-size: 0.9375rem;
+      table-layout: fixed;
     }
 
     .receipt-table td {
-      padding: 9px 12px;
+      padding: 9px 10px;
       border-bottom: 1px solid #e2e8f0;
       vertical-align: top;
+      word-break: break-word;
     }
 
     .receipt-table td.col-label {
-      width: 32%;
+      width: 36%;
       font-weight: 700;
       color: #475569;
     }
 
     .receipt-table td.col-val {
+      width: 64%;
       color: #0f172a;
       font-weight: 600;
+    }
+
+    .receipt-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 1.5rem;
+      justify-content: center;
+    }
+
+    .status-search-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 1.5rem;
+    }
+
+    .status-search-bar .form-control {
+      flex: 1;
+      min-width: 0;
+    }
+
+    @media (max-width: 640px) {
+      .receipt-container {
+        padding: 1.25rem 1rem;
+      }
+      .receipt-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding-bottom: 1rem;
+        margin-bottom: 1rem;
+      }
+      .receipt-logo {
+        flex: unset;
+        width: 100%;
+      }
+      .receipt-logo img {
+        width: 46px;
+        height: 46px;
+      }
+      .receipt-badge-status {
+        align-self: flex-start;
+      }
+      .receipt-table {
+        font-size: 0.85rem;
+      }
+      .receipt-table td {
+        padding: 8px 6px;
+      }
+      .receipt-table td.col-label {
+        width: 40%;
+      }
+      .receipt-table td.col-val {
+        width: 60%;
+      }
+      .receipt-actions .btn {
+        width: 100%;
+      }
+      .status-search-bar {
+        flex-direction: column;
+      }
+      .status-search-bar .btn {
+        width: 100%;
+      }
+      .bank-card {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .bank-card > div:last-child,
+      .bank-card .btn-copy {
+        width: 100%;
+        justify-content: center;
+      }
     }
 
     .receipt-footer-note {
@@ -1043,7 +1180,7 @@
           </div>
 
           <!-- ACTION BUTTONS KWITANSI -->
-          <div class="no-print" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 1.5rem; justify-content: center;">
+          <div class="no-print receipt-actions">
             <button type="button" class="btn btn-primary" onclick="window.print()">
               <i data-lucide="printer" style="width: 16px; height: 16px;"></i> Cetak Kwitansi / Simpan PDF
             </button>
@@ -1071,8 +1208,8 @@
           <p class="card-desc">Ketikkan Nomor Registrasi (contoh: OMP-2026-0001), Nomor WhatsApp Guru, atau Kode Peserta.</p>
         </div>
 
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1.5rem;">
-          <input type="text" id="inputCekKeyword" class="form-control" style="flex: 1; min-width: 250px;" placeholder="Ketik No. Registrasi / No. WA Guru / Kode Peserta..." onkeypress="if(event.key==='Enter') cariStatusPeserta()">
+        <div class="status-search-bar">
+          <input type="text" id="inputCekKeyword" class="form-control" placeholder="Ketik No. Registrasi / No. WA Guru / Kode Peserta..." onkeypress="if(event.key==='Enter') cariStatusPeserta()">
           <button type="button" class="btn btn-primary" onclick="cariStatusPeserta()">
             <i data-lucide="search" style="width: 16px; height: 16px;"></i> Cari Data
           </button>
@@ -1406,18 +1543,18 @@
             const badgeClass = isLunas ? 'background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;' : 'background: #fef3c7; color: #92400e; border: 1px solid #fde68a;';
 
             html += `
-              <div style="background: #ffffff; border: 1.5px solid var(--color-border-subtle); border-radius: 12px; padding: 1.5rem; margin-top: 1rem; box-shadow: var(--shadow-sm);">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 12px;">
+              <div style="background: #ffffff; border: 1.5px solid var(--color-border-subtle); border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: var(--shadow-sm); overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 12px;">
                   <div>
                     <span style="font-size: 11px; font-weight: bold; color: #657c94; text-transform: uppercase;">Nomor Registrasi</span>
-                    <h3 style="font-size: 1.25rem; font-weight: 800; color: #19365f; margin: 0;">${esc(item.noPendaftaran)}</h3>
+                    <h3 style="font-size: 1.2rem; font-weight: 800; color: #19365f; margin: 0;">${esc(item.noPendaftaran)}</h3>
                   </div>
-                  <div style="padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: bold; ${badgeClass}">
+                  <div style="padding: 5px 12px; border-radius: 9999px; font-size: 12px; font-weight: bold; white-space: nowrap; ${badgeClass}">
                     ${esc(item.status)}
                   </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 14px; margin-bottom: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; font-size: 14px; margin-bottom: 1rem; word-break: break-word;">
                   <div><span style="color: #64748b; font-size: 12px; display: block;">Nama Peserta:</span><strong>${esc(item.nama)}</strong></div>
                   <div><span style="color: #64748b; font-size: 12px; display: block;">Asal Sekolah:</span><strong>${esc(item.sekolah)}</strong></div>
                   <div><span style="color: #64748b; font-size: 12px; display: block;">Tingkatan Level:</span><strong>${esc(item.level)}</strong></div>
@@ -1425,8 +1562,8 @@
                   <div><span style="color: #64748b; font-size: 12px; display: block;">Nomor Kode Peserta:</span><strong style="color: #047857; font-size: 16px; font-family: monospace;">${esc(item.kodePeserta)}</strong></div>
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                  <button type="button" class="btn btn-secondary" style="height: 38px; font-size: 13px;" onclick="showDigitalReceipt(statusSearchResults[${idx}])">
+                <div style="display: flex; justify-content: flex-end;">
+                  <button type="button" class="btn btn-secondary" style="height: 40px; font-size: 13px; width: 100%;" onclick="showDigitalReceipt(statusSearchResults[${idx}])">
                     <i data-lucide="printer" style="width: 14px; height: 14px;"></i> Lihat & Cetak Kwitansi
                   </button>
                 </div>
