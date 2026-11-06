@@ -86,11 +86,63 @@ function openWebPortalDialog() {
 }
 
 /**
+ * Helper untuk mendapatkan ID Spreadsheet Asli secara otomatis dari Drive
+ */
+function getSpreadsheetAutoDiscovery() {
+  // 1. Coba SpreadsheetApp.getActiveSpreadsheet() jika script container-bound
+  try {
+    var activeSs = SpreadsheetApp.getActiveSpreadsheet();
+    if (activeSs) {
+      PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", activeSs.getId());
+      return activeSs;
+    }
+  } catch (e) {}
+
+  // 2. Coba cari berdasarkan nama file "DATABASE_OMEGA_PLUS_2026" di Google Drive
+  try {
+    var files = DriveApp.getFilesByName("DATABASE_OMEGA_PLUS_2026");
+    if (files.hasNext()) {
+      var f = files.next();
+      var foundSs = SpreadsheetApp.openById(f.getId());
+      if (foundSs) {
+        PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", f.getId());
+        Logger.log("Auto-Discovery Sukses! Menggunakan file Drive ID: " + f.getId());
+        return foundSs;
+      }
+    }
+  } catch (e) {
+    Logger.log("Gagal auto-discovery Drive: " + e.toString());
+  }
+
+  return null;
+}
+
+/**
+ * Fungsi Utility: Jalankan fungsi ini di Apps Script editor untuk melihat ID asli
+ */
+function cekDanDapatkanIdSpreadsheet() {
+  var ss = getSpreadsheetAutoDiscovery();
+  if (ss) {
+    var realId = ss.getId();
+    Logger.log("=========================================");
+    Logger.log("ID ASLI SPREADSHEET ANDA:");
+    Logger.log(realId);
+    Logger.log("URL SPREADSHEET:");
+    Logger.log(ss.getUrl());
+    Logger.log("=========================================");
+    return realId;
+  } else {
+    Logger.log("File DATABASE_OMEGA_PLUS_2026 tidak ditemukan di Google Drive.");
+    return null;
+  }
+}
+
+/**
  * 1. FUNGSI OTOMATISASI SETUP DATABASE & INISIALISASI COUNTER
  */
 function setupDatabase() {
   try {
-    var ss;
+    var ss = null;
     var props = PropertiesService.getScriptProperties();
     var targetId = SPREADSHEET_ID || props.getProperty("SPREADSHEET_ID");
 
@@ -100,8 +152,14 @@ function setupDatabase() {
         props.setProperty("SPREADSHEET_ID", ss.getId());
         Logger.log("Menggunakan Spreadsheet yang ada: " + ss.getUrl());
       } catch (e) {
+        Logger.log("Target ID gagal dibuka (" + targetId + "), mencoba auto-discovery...");
         ss = null;
       }
+    }
+
+    // Auto-discovery via Drive jika targetId gagal
+    if (!ss) {
+      ss = getSpreadsheetAutoDiscovery();
     }
 
     if (!ss) {
@@ -219,19 +277,34 @@ function styleHeader(sheet, headers, bgColor, textColor) {
 }
 
 /**
- * Mendapatkan referensi Google Spreadsheet aktif
+ * Mendapatkan referensi Google Spreadsheet aktif (Fail-safe Auto Discovery)
  */
 function getDatabase() {
   var props = PropertiesService.getScriptProperties();
   var id = SPREADSHEET_ID || props.getProperty("SPREADSHEET_ID");
-  if (SPREADSHEET_ID && props.getProperty("SPREADSHEET_ID") !== SPREADSHEET_ID) {
-    props.setProperty("SPREADSHEET_ID", SPREADSHEET_ID);
+  
+  if (id) {
+    try {
+      return SpreadsheetApp.openById(id);
+    } catch (e) {
+      Logger.log("Gagal openById (" + id + "), beralih ke auto-discovery di Drive...");
+    }
   }
-  if (!id) {
-    setupDatabase();
-    id = props.getProperty("SPREADSHEET_ID") || SPREADSHEET_ID;
+
+  // Auto-discovery via Drive
+  var ss = getSpreadsheetAutoDiscovery();
+  if (ss) {
+    return ss;
   }
-  return SpreadsheetApp.openById(id);
+
+  // Inisialisasi jika belum pernah ada
+  setupDatabase();
+  var finalId = props.getProperty("SPREADSHEET_ID");
+  if (finalId) {
+    return SpreadsheetApp.openById(finalId);
+  }
+
+  throw new Error("Tidak dapat membuka Google Spreadsheet DATABASE_OMEGA_PLUS_2026.");
 }
 
 /**
