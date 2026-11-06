@@ -995,11 +995,11 @@
             </div>
           </div>
 
-          <!-- BANNER ALOKASI RUANG KELAS -->
+          <!-- BANNER NOMOR KODE PESERTA RESMI -->
           <div class="room-highlight-banner">
-            <div class="room-title">ALOKASI RUANG KELAS UJIAN PESERTA</div>
-            <div class="room-val" id="receiptRuang">RUANG 01</div>
-            <div class="code-val">Nomor Kode Peserta: <strong id="receiptKodePeserta" style="color: #fde68a;">omega-0001-L1-01-2026</strong></div>
+            <div class="room-title">NOMOR KODE PESERTA RESMI</div>
+            <div class="room-val" id="receiptKodePeserta" style="letter-spacing: 2px;">01-01-001</div>
+            <div class="code-val">Simpan nomor kode peserta ini sebagai tanda bukti sah saat hari H ujian</div>
           </div>
 
           <!-- TABEL RINCIAN PESERTA -->
@@ -1291,7 +1291,6 @@
       document.getElementById('receiptHpGuru').innerText = data.noHpGuru || '-';
       document.getElementById('receiptLevel').innerText = data.level || '-';
       document.getElementById('receiptMapel').innerText = mapelVal;
-      document.getElementById('receiptRuang').innerText = data.ruangKelas || 'RUANG 01';
       document.getElementById('receiptKodePeserta').innerText = data.kodePeserta || '-';
 
       const badge = document.getElementById('receiptStatusBadge');
@@ -1324,7 +1323,7 @@
       const d = lastRegisteredData;
       const mapelVal = d.mapel || d.mataPelajaran || '-';
       const statusVal = d.status || d.statusVerifikasi || 'Menunggu Verifikasi';
-      const text = `*BUKTI PENDAFTARAN RESMI OMEGA PLUS 2026*\nSMP NEGERI 1 PAMEKASAN\n-----------------------------------\n*No. Registrasi:* ${d.noPendaftaran}\n*Nama Peserta:* ${d.nama}\n*Asal Sekolah:* ${d.sekolah}\n*Alamat Sekolah:* ${d.alamatSekolah || '-'}\n*Level:* ${d.level}\n*Mata Pelajaran:* ${mapelVal}\n*Kode Peserta:* ${d.kodePeserta}\n*Alokasi Ruang:* ${d.ruangKelas}\n*Status Pembayaran:* ${statusVal}\n-----------------------------------\nHarap simpan bukti pendaftaran ini untuk hari pelaksanaan ujian. Terima kasih!`;
+      const text = `*BUKTI PENDAFTARAN RESMI OMEGA PLUS 2026*\nSMP NEGERI 1 PAMEKASAN\n-----------------------------------\n*No. Registrasi:* ${d.noPendaftaran}\n*Nama Peserta:* ${d.nama}\n*Asal Sekolah:* ${d.sekolah}\n*Alamat Sekolah:* ${d.alamatSekolah || '-'}\n*Level:* ${d.level}\n*Mata Pelajaran:* ${mapelVal}\n*Kode Peserta:* ${d.kodePeserta}\n*Status Pembayaran:* ${statusVal}\n-----------------------------------\nHarap simpan bukti pendaftaran ini untuk hari pelaksanaan ujian. Terima kasih!`;
       
       const cleanPhone = (d.noHpGuru || '').replace(/[^0-9]/g, '');
       const waNumber = cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : cleanPhone;
@@ -1371,8 +1370,7 @@
                   <div><span style="color: #64748b; font-size: 12px; display: block;">Asal Sekolah:</span><strong>${esc(item.sekolah)}</strong></div>
                   <div><span style="color: #64748b; font-size: 12px; display: block;">Tingkatan Level:</span><strong>${esc(item.level)}</strong></div>
                   <div><span style="color: #64748b; font-size: 12px; display: block;">Mata Pelajaran:</span><strong>${esc(item.mataPelajaran)}</strong></div>
-                  <div><span style="color: #64748b; font-size: 12px; display: block;">Alokasi Ruang Ujian:</span><strong style="color: #285891; font-size: 16px;">${esc(item.ruangKelas || 'Ruang 01')}</strong></div>
-                  <div><span style="color: #64748b; font-size: 12px; display: block;">Nomor Kode Peserta:</span><strong style="color: #047857; font-size: 15px;">${esc(item.kodePeserta)}</strong></div>
+                  <div><span style="color: #64748b; font-size: 12px; display: block;">Nomor Kode Peserta:</span><strong style="color: #047857; font-size: 16px; font-family: monospace;">${esc(item.kodePeserta)}</strong></div>
                 </div>
 
                 <div style="display: flex; justify-content: flex-end; gap: 8px;">

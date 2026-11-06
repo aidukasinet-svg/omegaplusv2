@@ -27,9 +27,6 @@ const CONFIG = {
   ATAS_NAMA: "Norma Dewi",
   REKENING_PEMBAYARAN: "BCA 1921605205 a.n Norma Dewi",
 
-  // Konfigurasi 30 Ruang Kelas Ujian
-  TOTAL_RUANG_KELAS: 30,
-
   // Narahubung Resmi (Sesuai Brosur)
   CONTACTS: [
     { name: "Bapak Rasyidi", phone: "087781587155", wa: "6287781587155" },

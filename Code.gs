@@ -15,12 +15,58 @@ var SHEET_NAMES = {
   PENGATURAN: "PENGATURAN"
 };
 
+var CATEGORY_SHEETS = [
+  "Matematika Level 1",
+  "Matematika Level 2",
+  "B. Inggris Level 1",
+  "B. Inggris Level 2",
+  "IPA Level 1",
+  "IPA Level 2",
+  "IPS Level 1",
+  "IPS Level 2"
+];
+
+/**
+ * Mapping Kode Mapel (01-04) dan Kode Level (01-02)
+ */
+function getCategoryInfo(mapel, level) {
+  var mapelStr = String(mapel || "");
+  var levelStr = String(level || "");
+
+  var mapelCode = "01";
+  var mapelName = "Matematika";
+  if (mapelStr.indexOf("Inggris") !== -1) {
+    mapelCode = "02";
+    mapelName = "B. Inggris";
+  } else if (mapelStr.indexOf("IPA") !== -1) {
+    mapelCode = "03";
+    mapelName = "IPA";
+  } else if (mapelStr.indexOf("IPS") !== -1) {
+    mapelCode = "04";
+    mapelName = "IPS";
+  }
+
+  var levelCode = (levelStr.indexOf("1") !== -1) ? "01" : "02";
+  var levelName = (levelCode === "01") ? "Level 1" : "Level 2";
+
+  var catKey = mapelCode + "-" + levelCode;
+  var sheetName = mapelName + " " + levelName;
+
+  return {
+    mapelCode: mapelCode,
+    levelCode: levelCode,
+    catKey: catKey,
+    sheetName: sheetName
+  };
+}
+
 // --- MENU SETUP UNTUK GOOGLE SHEETS WORKSPACE ---
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu("✦ OMEGA PLUS 2026")
-    .addItem("Inisialisasi Database Baru", "setupDatabase")
+    .addItem("Inisialisasi Database Baru (Master + 8 Sheet)", "setupDatabase")
     .addItem("Hitung Ulang Counter & Statistik", "recalculateCountersAndStats")
+    .addItem("Sinkronkan 8 Database Kategori", "syncAllCategorySheets")
     .addSeparator()
     .addItem("Buka Portal Web Resmi", "openWebPortalDialog")
     .addToUi();
@@ -98,7 +144,7 @@ function setupDatabase() {
       ["Panitia_PIN", "2026", "PIN Panitia / Pengawas (View-Only: lihat data, filter ruang, cetak absen)"],
       ["Biaya_Pendaftaran", "50000", "Biaya pendaftaran per peserta (Rupiah)"],
       ["Rekening_Pembayaran", "BCA 1921605205 a.n Norma Dewi", "Rekening resmi transfer bank panitia"],
-      ["Total_Ruang_Kelas", "30", "Jumlah kapasitas ruang kelas ujian yang disediakan"],
+      ["Pengaturan_Ruang", "MANUAL", "Pengaturan ruangan dilakukan secara manual oleh panitia"],
       ["Kontak_1", "087781587155 (Bapak Rasyidi)", "Narahubung 1"],
       ["Kontak_2", "085259349169 (Bapak Indra)", "Narahubung 2"],
       ["Kontak_3", "081235922003 (Ibu Dwi Elly)", "Narahubung 3"],
@@ -112,11 +158,18 @@ function setupDatabase() {
       sheetPengaturan.autoResizeColumns(1, 3);
     }
 
+    // --- 8 SHEET DATABASE KATEGORI (TIAP LEVEL & MAPEL) ---
+    for (var c = 0; c < CATEGORY_SHEETS.length; c++) {
+      var catSheet = getOrCreateSheet(ss, CATEGORY_SHEETS[c]);
+      styleHeader(catSheet, headersPeserta, "#1e3a5f", "#ffffff");
+    }
+
     // Sinkronisasi paksa
     SpreadsheetApp.flush();
 
-    // Hitung ulang statistik
+    // Hitung ulang statistik & sinkronisasi data kategori
     recalculateCountersAndStats(ss);
+    syncAllCategorySheets(ss);
 
     Logger.log("SETUP DATABASE BARU SELESAI: " + ss.getUrl());
     return {
@@ -186,9 +239,9 @@ function recalculateCountersAndStats(ss) {
   var lastRow = sheet.getLastRow();
 
   var counters = { master: 0 };
-  for (var r = 1; r <= 30; r++) {
-    var rKey = "Ruang " + padZero(r, 2);
-    counters[rKey] = 0;
+  var catKeys = ["01-01", "01-02", "02-01", "02-02", "03-01", "03-02", "04-01", "04-02"];
+  for (var k = 0; k < catKeys.length; k++) {
+    counters[catKeys[k]] = 0;
   }
 
   var stats = {
@@ -219,8 +272,21 @@ function recalculateCountersAndStats(ss) {
 
       var lvl = String(range[i][5] || "");
       var mapel = String(range[i][6] || "");
+      var kodePeserta = String(range[i][7] || "");
       var ruang = String(range[i][8] || "");
       var status = String(range[i][10] || "");
+
+      // Hitung sequence number tertinggi per kombinasi mapel & level (XX-YY-ZZZ)
+      var km = kodePeserta.match(/^(\d{2})-(\d{2})-(\d+)$/);
+      if (km) {
+        var cKey = km[1] + "-" + km[2];
+        var seqNum = parseInt(km[3], 10);
+        if (counters[cKey] !== undefined) {
+          counters[cKey] = Math.max(counters[cKey], seqNum);
+        } else {
+          counters[cKey] = seqNum;
+        }
+      }
 
       if (lvl.indexOf("1") !== -1) stats.level1++;
       if (lvl.indexOf("2") !== -1) stats.level2++;
@@ -247,6 +313,59 @@ function recalculateCountersAndStats(ss) {
   var cache = CacheService.getScriptCache();
   cache.put("DASHBOARD_STATS", JSON.stringify(stats), 21600); // 6 jam cache
   Logger.log("Counters & Stats terbarui: " + JSON.stringify(stats));
+}
+
+/**
+ * SINKRONISASI OTOMATIS DATA DARI SHEET MASTER KE 8 DATABASE KATEGORI
+ */
+function syncAllCategorySheets(ss) {
+  if (!ss) ss = getDatabase();
+  var masterSheet = ss.getSheetByName(SHEET_NAMES.PESERTA);
+  if (!masterSheet) return { status: "error", message: "Sheet Master PESERTA tidak ditemukan" };
+  var lastRow = masterSheet.getLastRow();
+
+  var headersPeserta = [
+    "Timestamp", "No_Pendaftaran", "Nama_Peserta", "Asal_Sekolah",
+    "Alamat_Sekolah", "No_HP_Guru", "Level", "Mata_Pelajaran",
+    "Kode_Peserta", "Ruang_Kelas", "Bukti_Transfer_Url",
+    "Status_Verifikasi", "Catatan_Panitia", "Waktu_Verifikasi"
+  ];
+
+  var categoryData = {};
+  for (var c = 0; c < CATEGORY_SHEETS.length; c++) {
+    categoryData[CATEGORY_SHEETS[c]] = [];
+    var cSheet = getOrCreateSheet(ss, CATEGORY_SHEETS[c]);
+    var cLast = cSheet.getLastRow();
+    if (cLast > 1) {
+      cSheet.getRange(2, 1, cLast - 1, 14).clearContent();
+    }
+    styleHeader(cSheet, headersPeserta, "#1e3a5f", "#ffffff");
+  }
+
+  if (lastRow > 1) {
+    var allData = masterSheet.getRange(2, 1, lastRow - 1, 14).getValues();
+    for (var i = 0; i < allData.length; i++) {
+      var r = allData[i];
+      var lvl = String(r[6] || "");
+      var mpl = String(r[7] || "");
+      var info = getCategoryInfo(mpl, lvl);
+      if (categoryData[info.sheetName]) {
+        categoryData[info.sheetName].push(r);
+      }
+    }
+
+    for (var name in categoryData) {
+      if (categoryData[name].length > 0) {
+        var targetSheet = ss.getSheetByName(name);
+        targetSheet.getRange(2, 1, categoryData[name].length, 14).setValues(categoryData[name]);
+        targetSheet.autoResizeColumns(1, 14);
+      }
+    }
+  }
+
+  SpreadsheetApp.flush();
+  Logger.log("8 Database Kategori berhasil disinkronkan.");
+  return { status: "success", message: "8 Database Kategori berhasil disinkronkan dari Sheet Master" };
 }
 
 /**
@@ -286,7 +405,8 @@ function doGet(e) {
           break;
         }
         recalculateCountersAndStats();
-        result = { status: "success", message: "Statistik berhasil dihitung ulang dari data sheet" };
+        syncAllCategorySheets();
+        result = { status: "success", message: "Statistik & 8 Database Kategori berhasil dihitung ulang dan disinkronkan" };
         break;
 
       default:
@@ -517,27 +637,31 @@ function handleDaftarPesertaTurbo(data) {
         counters = JSON.parse(props.getProperty("OMEGA_COUNTERS"));
       }
 
-      // Increment Master Sequence Number
+      // 1. Resolve Category Info (Mapel 01-04, Level 01-02)
+      var catInfo = getCategoryInfo(mapel, level);
+
+      // 2. Increment Master Sequence Number (OMP-2026-XXXX)
       counters.master = (counters.master || 0) + 1;
       var curNum = counters.master;
       var num4Str = padZero(curNum, 4);
-
-      // Alokasi Otomatis 30 Ruang Kelas Ujian (Ruang 01 s/d Ruang 30 secara berurutan)
-      roomNum = ((curNum - 1) % 30) + 1;
-      var room2Str = padZero(roomNum, 2);
-      ruangKelas = "Ruang " + room2Str;
-
-      // Format Kode Peserta Baku Permintaan Klien:
-      // omega 0001-kode level-kelas -2026 (contoh: omega-0001-L1-01-2026)
-      var levelCode = (level.indexOf("1") !== -1) ? "L1" : "L2";
-      kodePeserta = "omega-" + num4Str + "-" + levelCode + "-" + room2Str + "-2026";
       noPendaftaran = "OMP-2026-" + num4Str;
 
-      // Tulis Atomic Single-Row ke Sheet PESERTA di dalam lock
-      var ss = getDatabase();
-      var sheet = ss.getSheetByName(SHEET_NAMES.PESERTA);
+      // 3. Increment Sequence per Mapel & Level (001, 002, ...)
+      counters[catInfo.catKey] = (counters[catInfo.catKey] || 0) + 1;
+      var seqNum = counters[catInfo.catKey];
+      var seq3Str = padZero(seqNum, 3);
 
-      sheet.appendRow([
+      // 4. Format Kode Peserta Baku Sesuai Kesepakatan: XX-YY-ZZZ (contoh: 01-01-001)
+      kodePeserta = catInfo.mapelCode + "-" + catInfo.levelCode + "-" + seq3Str;
+
+      // 5. Alokasi Ruang Kelas: Manual oleh Panitia (disetel "-" oleh sistem)
+      ruangKelas = "-";
+
+      // 6. Tulis Atomic Single-Row ke Sheet PESERTA (Master) di dalam lock
+      var ss = getDatabase();
+      var sheetMaster = ss.getSheetByName(SHEET_NAMES.PESERTA);
+
+      var rowValues = [
         timestamp,
         noPendaftaran,
         sanitizeSheetCell(nama),
@@ -552,19 +676,25 @@ function handleDaftarPesertaTurbo(data) {
         statusVerif,
         "Pendaftaran via Web Portal Resmi",
         "-"
-      ]);
+      ];
+
+      // Tulis ke Sheet MASTER (PESERTA)
+      sheetMaster.appendRow(rowValues);
+
+      // Tulis ke Sheet Kategori terkait (1 dari 8 Database)
+      var catSheet = getOrCreateSheet(ss, catInfo.sheetName);
+      catSheet.appendRow(rowValues);
 
       SpreadsheetApp.flush();
 
-      // Update counter ruang & simpan setelah appendRow sukses
-      counters[ruangKelas] = (counters[ruangKelas] || 0) + 1;
+      // Update counters di ScriptProperties
       props.setProperty("OMEGA_COUNTERS", JSON.stringify(counters));
 
       // Update Dashboard Stats Memory
       var statsRaw = props.getProperty("DASHBOARD_STATS");
       var stats = statsRaw ? JSON.parse(statsRaw) : { total: 0, level1: 0, level2: 0, matematika: 0, bahasaInggris: 0, ipa: 0, ips: 0, verified: 0, pending: 0 };
       stats.total = (stats.total || 0) + 1;
-      if (levelCode === "L1") stats.level1++; else stats.level2++;
+      if (catInfo.levelCode === "01") stats.level1++; else stats.level2++;
       if (mapel.indexOf("Matematika") !== -1) stats.matematika++;
       if (mapel.indexOf("Bahasa Inggris") !== -1) stats.bahasaInggris++;
       if (mapel.indexOf("IPA") !== -1) stats.ipa++;
@@ -808,8 +938,9 @@ function handleVerifikasiPeserta(payload) {
     sheet.getRange(targetRow, 12, 1, 3).setValues([[statusBaru, catatan, waktuNow]]);
     SpreadsheetApp.flush();
 
-    // Update Counter Stats
+    // Update Counter Stats & 8 Database Kategori
     recalculateCountersAndStats(ss);
+    syncAllCategorySheets(ss);
 
     return { status: "success", message: "Status peserta " + noPendaftaran + " berhasil diubah menjadi: " + statusBaru };
   } catch (err) {
@@ -859,6 +990,7 @@ function handleUpdatePeserta(payload) {
     sheet.getRange(targetRow, 3, 1, 8).setValues([rowData]);
     SpreadsheetApp.flush();
     recalculateCountersAndStats(ss);
+    syncAllCategorySheets(ss);
 
     return { status: "success", message: "Data peserta berhasil diperbarui!" };
   } catch (err) {
@@ -898,6 +1030,7 @@ function handleDeletePeserta(payload) {
     sheet.deleteRow(targetRow);
     SpreadsheetApp.flush();
     recalculateCountersAndStats(ss);
+    syncAllCategorySheets(ss);
     return { status: "success", message: "Data peserta berhasil dihapus dari sistem." };
   } catch (err) {
     Logger.log("Error in handleDeletePeserta: " + err.toString());
