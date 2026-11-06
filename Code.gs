@@ -8,7 +8,7 @@
  * =========================================================================
  */
 
-var SPREADSHEET_ID = "1SPCZkf-gtaBZ2z6fi6XF-CS3a4g_A5cdllwYeZOIFf6G0Xl2fcqDGY8c-"; 
+var SPREADSHEET_ID = "1HirE660KgSHG5CWIQMs7jEDXHfV1s6L4tS3sHEfi0kg"; 
 
 var SHEET_NAMES = {
   PESERTA: "PESERTA",
@@ -92,11 +92,12 @@ function setupDatabase() {
   try {
     var ss;
     var props = PropertiesService.getScriptProperties();
-    var savedId = props.getProperty("SPREADSHEET_ID") || SPREADSHEET_ID;
+    var targetId = SPREADSHEET_ID || props.getProperty("SPREADSHEET_ID");
 
-    if (savedId) {
+    if (targetId) {
       try {
-        ss = SpreadsheetApp.openById(savedId);
+        ss = SpreadsheetApp.openById(targetId);
+        props.setProperty("SPREADSHEET_ID", ss.getId());
         Logger.log("Menggunakan Spreadsheet yang ada: " + ss.getUrl());
       } catch (e) {
         ss = null;
@@ -222,10 +223,13 @@ function styleHeader(sheet, headers, bgColor, textColor) {
  */
 function getDatabase() {
   var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty("SPREADSHEET_ID") || SPREADSHEET_ID;
+  var id = SPREADSHEET_ID || props.getProperty("SPREADSHEET_ID");
+  if (SPREADSHEET_ID && props.getProperty("SPREADSHEET_ID") !== SPREADSHEET_ID) {
+    props.setProperty("SPREADSHEET_ID", SPREADSHEET_ID);
+  }
   if (!id) {
     setupDatabase();
-    id = props.getProperty("SPREADSHEET_ID");
+    id = props.getProperty("SPREADSHEET_ID") || SPREADSHEET_ID;
   }
   return SpreadsheetApp.openById(id);
 }
