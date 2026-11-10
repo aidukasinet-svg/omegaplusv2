@@ -8,9 +8,12 @@
 
 const CONFIG = {
   // Bila di-deploy di Cloudflare Pages, gunakan '/api' (diteruskan via _worker.js)
-  // Bila dibuka secara lokal (file://), gunakan URL langsung Google Apps Script Web App
-  API_URL: window.location.protocol === 'file:' 
-    ? 'https://script.google.com/macros/s/AKfycbwsvjH5vK-g5UJF0sI4knpOal8jdGzYC6Z82lP0ecXW2yWGA4wIKmtoa4YRNXgz-g13vg/exec' 
+  // Bila dibuka secara lokal (file://, localhost, 127.0.0.1), gunakan URL langsung Google Apps Script Web App
+  API_URL: (window.location.protocol === 'file:' || 
+            window.location.hostname === 'localhost' || 
+            window.location.hostname === '127.0.0.1' || 
+            !window.location.hostname)
+    ? 'https://script.google.com/macros/s/AKfycbyUqGE0tpBf13dJ0TqOU9luTXB_1KMZZez_zd8OfaNft02CpIiDiePhlnIqxjlLcE3Kcg/exec' 
     : '/api',
 
   // Informasi Event dari Brosur & Keputusan Resmi

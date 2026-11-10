@@ -17,21 +17,12 @@
 (function () {
   'use strict';
 
-  // Dapatkan konfigurasi dari window.APP_CONFIG (config.js)
-  const appConfig = window.APP_CONFIG || {};
-  const demoConfig = appConfig.DEMO_MODE || {
-    LOCKED: false,
-    DEVELOPER_WA: "088228511309",
-    DEVELOPER_WA_LINK: "https://wa.me/6288228511309?text=" + encodeURIComponent("Halo Developer OMEGA PLUS 2026, kami dari pihak panitia/sekolah ingin konfirmasi mengenai kelanjutan proyek dan aktivasi penuh sistem pendaftaran website."),
-    BADGE: "PREVIEW EKSKLUSIF SISTEM",
-    TITLE: "Sistem Pendaftaran Siap Diaktifkan",
-    DESCRIPTION: "Portal Pendaftaran Online, Cek Status Real-time, dan Dashboard Verifikasi Peserta OMEGA PLUS 2026 telah selesai dikembangkan dan saat ini dalam status <strong>Preview Terbatas</strong>.<br><br>Akses penuh ke formulir dan database akan langsung diaktifkan segera setelah konfirmasi kesepakatan kerjasama (deal) dengan pihak sekolah/panitia difinalisasi."
+  // Proteksi Demo dinonaktifkan: aplikasi sudah aktif penuh dan bebas dibuka
+  window.DEMO_GUARD = {
+    show: function () {},
+    hide: function () {}
   };
-
-  // Jika proteksi dinonaktifkan (sudah deal), jangan jalankan apa pun
-  if (!demoConfig.LOCKED) {
-    return;
-  }
+  return;
 
   // Tentukan apakah halaman saat ini adalah landing page atau halaman fungsional
   const currentPath = window.location.pathname.toLowerCase();
