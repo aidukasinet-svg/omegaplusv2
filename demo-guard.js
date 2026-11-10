@@ -20,7 +20,7 @@
   // Dapatkan konfigurasi dari window.APP_CONFIG (config.js)
   const appConfig = window.APP_CONFIG || {};
   const demoConfig = appConfig.DEMO_MODE || {
-    LOCKED: true,
+    LOCKED: false,
     DEVELOPER_WA: "088228511309",
     DEVELOPER_WA_LINK: "https://wa.me/6288228511309?text=" + encodeURIComponent("Halo Developer OMEGA PLUS 2026, kami dari pihak panitia/sekolah ingin konfirmasi mengenai kelanjutan proyek dan aktivasi penuh sistem pendaftaran website."),
     BADGE: "PREVIEW EKSKLUSIF SISTEM",
