@@ -21,9 +21,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Work+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <!-- SweetAlert2 & Lucide Icons -->
+  <!-- SweetAlert2, Lucide Icons & ExcelJS (Ekspor XLSX Rapi) -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
   <!-- Konfigurasi Global & Demo Guard -->
   <script src="config.js"></script>
@@ -1471,8 +1472,8 @@
               <button class="btn btn-primary" onclick="cetakPresensiRuang()">
                 <i data-lucide="clipboard-list" style="width: 14px; height: 14px;"></i> CETAK DAFTAR HADIR
               </button>
-              <button class="btn btn-secondary" onclick="eksporExcelCSV()">
-                <i data-lucide="download" style="width: 14px; height: 14px;"></i> EKSPOR EXCEL
+              <button class="btn btn-secondary" onclick="eksporExcelXLSX()">
+                <i data-lucide="file-spreadsheet" style="width: 14px; height: 14px;"></i> EKSPOR EXCEL (.XLSX)
               </button>
             </div>
           </div>
@@ -1585,16 +1586,16 @@
 
           <div class="report-card">
             <div class="report-card-head">
-              <div class="report-icon-box" style="background: #fef3c7; color: #b45309;">
-                <i data-lucide="download" style="width: 22px; height: 22px;"></i>
+              <div class="report-icon-box" style="background: #dcfce7; color: #166534;">
+                <i data-lucide="file-spreadsheet" style="width: 22px; height: 22px;"></i>
               </div>
               <div>
-                <h4>Unduh / Ekspor Excel (CSV)</h4>
-                <p>Simpan data peserta ke file CSV/Excel untuk pengolahan nilai atau arsip panitia secara offline.</p>
+                <h4>Unduh / Ekspor Excel (.xlsx)</h4>
+                <p>Unduh file Microsoft Excel resmi (.xlsx) lengkap dengan tabel rapi, Nomor Peserta format teks, status berwarna, dan tab per kategori.</p>
               </div>
             </div>
-            <button type="button" class="btn btn-secondary" style="width: 100%; height: 44px;" onclick="eksporExcelCSV()">
-              <i data-lucide="download" style="width: 16px; height: 16px;"></i> Unduh File Excel (CSV)
+            <button type="button" class="btn btn-secondary" style="width: 100%; height: 44px; background: #ecfdf5; color: #047857; border-color: #a7f3d0;" onclick="eksporExcelXLSX()">
+              <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i> Unduh File Excel (.xlsx)
             </button>
           </div>
         </div>
@@ -1660,12 +1661,6 @@
 
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    }
-
-    function csvCell(val) {
-      let s = String(val ?? '').trim();
-      if (/^[=+\-@]/.test(s)) s = "'" + s;
-      return `"${s.replace(/"/g, '""')}"`;
     }
 
     // Helper Normalisasi Kode Peserta & No HP di sisi Frontend (mencegah tampilan tanggal Fri Feb 02 2001 / angka 2001)
@@ -2519,43 +2514,353 @@
       w.document.close();
     }
 
-    // EKSPOR KE EXCEL / CSV
-    function eksporExcelCSV() {
+    // Pastikan library ExcelJS tersedia (muat dinamis jika CDN awal gagal/lambat)
+    function ensureExcelJSLoaded() {
+      if (typeof window.ExcelJS !== 'undefined') {
+        return Promise.resolve(window.ExcelJS);
+      }
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+        script.onload = () => {
+          if (typeof window.ExcelJS !== 'undefined') resolve(window.ExcelJS);
+          else reject(new Error('ExcelJS tidak terinisialisasi.'));
+        };
+        script.onerror = () => reject(new Error('Gagal memuat library Excel (.xlsx) dari CDN. Periksa koneksi internet Anda.'));
+        document.head.appendChild(script);
+      });
+    }
+
+    function sortPesertaForExcel(list) {
+      return [...list].sort((a, b) => {
+        const ka = String(a.kodePeserta || '');
+        const kb = String(b.kodePeserta || '');
+        const cmp = ka.localeCompare(kb, undefined, { numeric: true });
+        if (cmp !== 0) return cmp;
+        return String(a.noPendaftaran || '').localeCompare(String(b.noPendaftaran || ''), undefined, { numeric: true });
+      });
+    }
+
+    function appendStyledPesertaSheet(workbook, sheetTitle, rows, metaText) {
+      const safeName = String(sheetTitle || 'Rekap')
+        .replace(/[:\\/?*\[\]]/g, '')
+        .trim()
+        .slice(0, 31) || 'Rekap';
+
+      const ws = workbook.addWorksheet(safeName, {
+        views: [{ state: 'frozen', ySplit: 5, showGridLines: true }],
+        pageSetup: {
+          orientation: 'landscape',
+          paperSize: 9,
+          fitToPage: true,
+          fitToWidth: 1,
+          fitToHeight: 0
+        }
+      });
+
+      ws.columns = [
+        { key: 'no', width: 6 },
+        { key: 'kodePeserta', width: 17 },
+        { key: 'noPendaftaran', width: 19 },
+        { key: 'nama', width: 32 },
+        { key: 'sekolah', width: 28 },
+        { key: 'alamatSekolah', width: 36 },
+        { key: 'noHpGuru', width: 18 },
+        { key: 'level', width: 21 },
+        { key: 'mataPelajaran', width: 18 },
+        { key: 'buktiTransferUrl', width: 16 },
+        { key: 'status', width: 21 },
+        { key: 'catatan', width: 28 }
+      ];
+
+      // Kop Judul Resmi (Baris 1 - 3)
+      ws.mergeCells('A1:L1');
+      const r1 = ws.getRow(1);
+      r1.getCell(1).value = 'REKAPITULASI DATA PESERTA OLIMPIADE OMEGA PLUS 2026';
+      r1.getCell(1).font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF19365F' } };
+      r1.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      r1.height = 26;
+
+      ws.mergeCells('A2:L2');
+      const r2 = ws.getRow(2);
+      r2.getCell(1).value = 'SMP NEGERI 1 PAMEKASAN — SE-MADURA';
+      r2.getCell(1).font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF285891' } };
+      r2.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      r2.height = 20;
+
+      ws.mergeCells('A3:L3');
+      const r3 = ws.getRow(3);
+      r3.getCell(1).value = metaText;
+      r3.getCell(1).font = { name: 'Calibri', size: 9.5, italic: true, color: { argb: 'FF475569' } };
+      r3.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      r3.height = 18;
+
+      ws.getRow(4).height = 8;
+
+      // Baris 5: Header Tabel
+      const headers = [
+        'No',
+        'Nomor Peserta',
+        'No. Pendaftaran',
+        'Nama Lengkap Peserta',
+        'Asal Sekolah (SD/MI)',
+        'Alamat Sekolah',
+        'No. WA Guru',
+        'Tingkatan Level',
+        'Mata Pelajaran',
+        'Bukti Transfer',
+        'Status Verifikasi',
+        'Catatan Panitia'
+      ];
+
+      const headerRow = ws.getRow(5);
+      headerRow.height = 28;
+      headers.forEach((h, idx) => {
+        const cell = headerRow.getCell(idx + 1);
+        cell.value = h;
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF19365F' } };
+        cell.font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF19365F' } },
+          left: { style: 'thin', color: { argb: 'FF285891' } },
+          bottom: { style: 'medium', color: { argb: 'FFE7B55E' } },
+          right: { style: 'thin', color: { argb: 'FF285891' } }
+        };
+      });
+
+      ws.autoFilter = {
+        from: { row: 5, column: 1 },
+        to: { row: 5, column: 12 }
+      };
+
+      const thinBorder = {
+        top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+      };
+
+      let lunasCount = 0;
+      let pendingCount = 0;
+
+      rows.forEach((p, idx) => {
+        const rowNum = 6 + idx;
+        const row = ws.getRow(rowNum);
+        const isLunas = (p.status === 'Lunas' || p.status === 'Terverifikasi');
+        if (isLunas) lunasCount++; else pendingCount++;
+
+        const zebraArgb = (idx % 2 === 1) ? 'FFF8FAFC' : 'FFFFFFFF';
+        const namaVal = String(p.nama || '-').trim();
+        const sekolahVal = String(p.sekolah || '-').trim();
+        const alamatVal = String(p.alamatSekolah || '-').trim();
+        const hpVal = String(p.noHpGuru || '-').trim();
+        const levelVal = String(p.level || '-').trim();
+        const mapelVal = String(p.mataPelajaran || '-').trim();
+        const kodeVal = String(p.kodePeserta || '-').trim();
+        const noRegVal = String(p.noPendaftaran || '-').trim();
+        const statusVal = String(p.status || 'Menunggu Verifikasi').trim();
+        const catatanVal = String(p.catatan || '-').trim();
+
+        const values = [
+          idx + 1,
+          kodeVal,
+          noRegVal,
+          namaVal,
+          sekolahVal,
+          alamatVal,
+          hpVal,
+          levelVal,
+          mapelVal,
+          '-',
+          statusVal,
+          catatanVal
+        ];
+
+        values.forEach((val, colIdx) => {
+          const cell = row.getCell(colIdx + 1);
+          cell.value = val;
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebraArgb } };
+          cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF0F172A' } };
+          cell.border = thinBorder;
+          cell.alignment = { vertical: 'middle', wrapText: true };
+        });
+
+        // Formatting khusus tiap kolom
+        row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Nomor Peserta (Teks @, bold hijau)
+        const cKode = row.getCell(2);
+        cKode.numFmt = '@';
+        cKode.font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: 'FF047857' } };
+        cKode.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // No. Pendaftaran (Teks @)
+        const cReg = row.getCell(3);
+        cReg.numFmt = '@';
+        cReg.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF19365F' } };
+        cReg.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Nama Peserta
+        row.getCell(4).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+
+        // No. WA Guru (Teks @ agar 0 di depan tidak hilang)
+        const cHp = row.getCell(7);
+        cHp.numFmt = '@';
+        cHp.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF047857' } };
+        cHp.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        row.getCell(8).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        row.getCell(9).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+
+        // Bukti Transfer (Hyperlink aktif jika URL valid)
+        const cBukti = row.getCell(10);
+        cBukti.alignment = { horizontal: 'center', vertical: 'middle' };
+        if (p.buktiTransferUrl && /^https?:\/\//i.test(p.buktiTransferUrl)) {
+          cBukti.value = {
+            text: 'Lihat Bukti',
+            hyperlink: p.buktiTransferUrl,
+            tooltip: p.buktiTransferUrl
+          };
+          cBukti.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF285891' }, underline: true };
+        }
+
+        // Badge Status Verifikasi
+        const cStatus = row.getCell(11);
+        cStatus.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        if (isLunas) {
+          cStatus.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+          cStatus.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF166534' } };
+        } else {
+          cStatus.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+          cStatus.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF92400E' } };
+        }
+
+        // Tinggi baris otomatis proporsional sesuai teks terpanjang
+        const maxLines = Math.max(
+          Math.ceil(namaVal.length / 30),
+          Math.ceil(sekolahVal.length / 26),
+          Math.ceil(alamatVal.length / 34),
+          Math.ceil(catatanVal.length / 26),
+          1
+        );
+        row.height = Math.max(22, maxLines * 15 + 6);
+      });
+
+      // Baris Ringkasan Bawah
+      const footerRowNum = 6 + rows.length + 1;
+      ws.mergeCells(footerRowNum, 1, footerRowNum, 12);
+      const footerRow = ws.getRow(footerRowNum);
+      const fCell = footerRow.getCell(1);
+      fCell.value = `Ringkasan Lembar "${safeName}": Total ${rows.length} Peserta  |  Lunas / Sah: ${lunasCount}  |  Menunggu Verifikasi: ${pendingCount}`;
+      fCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF1FA' } };
+      fCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF19365F' } };
+      fCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+      fCell.border = thinBorder;
+      footerRow.height = 24;
+    }
+
+    async function buildOmegaExcelWorkbook(ExcelJSLib, listToExport, opts = {}) {
+      const workbook = new ExcelJSLib.Workbook();
+      workbook.creator = 'Sistem OMEGA PLUS 2026 — SMPN 1 Pamekasan';
+      workbook.created = new Date();
+
+      const lvl = opts.lvl || 'Semua';
+      const mpl = opts.mpl || 'Semua';
+      const st = opts.st || 'Semua';
+      const exportTime = opts.exportTime || new Intl.DateTimeFormat('id-ID', {
+        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      }).format(new Date()) + ' WIB';
+
+      const sortedAll = sortPesertaForExcel(listToExport);
+
+      if (lvl === 'Semua' && mpl === 'Semua') {
+        const masterMeta = `Kategori: Semua Kategori (Master)  |  Status: ${st}  |  Total: ${sortedAll.length} Peserta  |  Diekspor: ${exportTime}`;
+        appendStyledPesertaSheet(workbook, 'Semua Peserta', sortedAll, masterMeta);
+
+        // Sertakan pula sheet terpisah per kategori lomba yang memiliki peserta
+        const categories = [
+          { label: 'Matematika Level 1', match: p => String(p.mataPelajaran || '').includes('Matematika') && String(p.level || '').includes('1') },
+          { label: 'Matematika Level 2', match: p => String(p.mataPelajaran || '').includes('Matematika') && String(p.level || '').includes('2') },
+          { label: 'B. Inggris Level 1', match: p => String(p.mataPelajaran || '').includes('Inggris') && String(p.level || '').includes('1') },
+          { label: 'B. Inggris Level 2', match: p => String(p.mataPelajaran || '').includes('Inggris') && String(p.level || '').includes('2') },
+          { label: 'IPA Level 1', match: p => String(p.mataPelajaran || '').includes('IPA') && String(p.level || '').includes('1') },
+          { label: 'IPA Level 2', match: p => String(p.mataPelajaran || '').includes('IPA') && String(p.level || '').includes('2') },
+          { label: 'IPS Level 1', match: p => String(p.mataPelajaran || '').includes('IPS') && String(p.level || '').includes('1') },
+          { label: 'IPS Level 2', match: p => String(p.mataPelajaran || '').includes('IPS') && String(p.level || '').includes('2') }
+        ];
+
+        categories.forEach(cat => {
+          const items = sortedAll.filter(cat.match);
+          if (items.length > 0) {
+            const catMeta = `Kategori: ${cat.label}  |  Status: ${st}  |  Total: ${items.length} Peserta  |  Diekspor: ${exportTime}`;
+            appendStyledPesertaSheet(workbook, cat.label, items, catMeta);
+          }
+        });
+      } else {
+        const sheetName = `${mpl !== 'Semua' ? mpl : 'Semua Mapel'} ${lvl !== 'Semua' ? lvl : 'Semua Level'}`.trim();
+        const catMeta = `Kategori: ${sheetName}  |  Status: ${st}  |  Total: ${sortedAll.length} Peserta  |  Diekspor: ${exportTime}`;
+        appendStyledPesertaSheet(workbook, sheetName, sortedAll, catMeta);
+      }
+
+      return workbook;
+    }
+
+    // EKSPOR KE MICROSOFT EXCEL (.XLSX) RAPI
+    async function eksporExcelXLSX() {
       const listToExport = getFilteredPeserta();
       if (listToExport.length === 0) {
         Swal.fire({ icon: 'info', title: 'Belum Ada Data Untuk Diekspor' });
         return;
       }
 
-      let csv = '\uFEFFNo,No_Pendaftaran,Nama_Peserta,Asal_Sekolah,Alamat_Sekolah,No_WhatsApp_Guru,Level,Mata_Pelajaran,Kode_Peserta,Bukti_Transfer_Url,Status_Verifikasi,Catatan\n';
+      const lvl = document.getElementById('filterLevel').value;
+      const mpl = document.getElementById('filterMapel').value;
+      const st = document.getElementById('filterStatus').value;
 
-      listToExport.forEach((p, idx) => {
-        const row = [
-          idx + 1,
-          csvCell(p.noPendaftaran),
-          csvCell(p.nama),
-          csvCell(p.sekolah),
-          csvCell(p.alamatSekolah),
-          csvCell(p.noHpGuru),
-          csvCell(p.level),
-          csvCell(p.mataPelajaran),
-          csvCell(p.kodePeserta),
-          csvCell(p.buktiTransferUrl),
-          csvCell(p.status),
-          csvCell(p.catatan)
-        ];
-        csv += row.join(',') + '\n';
+      Swal.fire({
+        title: 'Menyiapkan File Excel...',
+        text: 'Sedang memformat tabel, Nomor Peserta, dan sheet kategori ke .xlsx',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
       });
 
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `REKAP_PESERTA_OMEGA_PLUS_2026_${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      try {
+        const ExcelJSLib = await ensureExcelJSLoaded();
+        const workbook = await buildOmegaExcelWorkbook(ExcelJSLib, listToExport, { lvl, mpl, st });
+        const buffer = await workbook.xlsx.writeBuffer();
+
+        const blob = new Blob([buffer], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+
+        const slugParts = [];
+        if (mpl !== 'Semua') slugParts.push(mpl.replace(/\s+/g, '_'));
+        if (lvl !== 'Semua') slugParts.push(lvl.replace(/\s+/g, '_'));
+        const catSlug = slugParts.length > 0 ? slugParts.join('_') : 'SEMUA';
+        const dateStr = new Date().toISOString().slice(0, 10);
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `REKAP_OMEGA_PLUS_2026_${catSlug}_${dateStr}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        Swal.close();
+      } catch (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Gagal Membuat File Excel',
+          text: err.message || 'Terjadi kesalahan saat mengekspor data ke .xlsx.'
+        });
+      }
+    }
+
+    function eksporExcelCSV() {
+      return eksporExcelXLSX();
     }
   </script>
 </body>
