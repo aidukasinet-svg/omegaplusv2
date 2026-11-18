@@ -41,7 +41,8 @@ export default {
       });
 
       // EDGE CACHING UNTUK REQUEST GET STATS & CONFIG (Meringankan Apps Script)
-      const isCacheableGet = (request.method === 'GET' && (action === 'getDashboardStats' || action === 'getPublicConfig' || action === 'ping'));
+      const isFreshRequest = url.searchParams.get('fresh') === '1' || url.searchParams.get('fresh') === 'true';
+      const isCacheableGet = (!isFreshRequest && request.method === 'GET' && (action === 'getDashboardStats' || action === 'getPublicConfig' || action === 'ping'));
       const cache = caches.default;
       const cacheKey = new Request(targetUrl.toString(), request);
 
@@ -79,10 +80,14 @@ export default {
         const gasResponse = await fetch(targetUrl.toString(), fetchOptions);
         const responseData = await gasResponse.text();
 
+        const cacheControlHeader = !isCacheableGet
+          ? 'no-store, no-cache'
+          : (action === 'getPublicConfig' ? 'public, max-age=5, s-maxage=5' : 'public, max-age=15, s-maxage=30');
+
         const responseHeaders = {
           ...corsHeaders,
           'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': isCacheableGet ? 'public, max-age=15, s-maxage=30' : 'no-store, no-cache',
+          'Cache-Control': cacheControlHeader,
           'X-Edge-Cache': 'MISS'
         };
 

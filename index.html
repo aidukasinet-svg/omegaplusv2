@@ -856,6 +856,52 @@
       line-height: 1.45;
     }
 
+    /* BANNER PENGUMUMAN PENDAFTARAN DITUTUP */
+    .closed-notice-banner {
+      background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
+      border: 1.5px solid #fca5a5;
+      border-left: 5px solid #dc2626;
+      border-radius: var(--radius-md);
+      padding: 1.15rem 1.25rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      box-shadow: 0 4px 14px rgba(220, 38, 38, 0.08);
+    }
+
+    .closed-notice-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #fee2e2;
+      color: #dc2626;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .closed-notice-body h4 {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.98rem;
+      font-weight: 800;
+      color: #991b1b;
+      margin: 0 0 4px;
+    }
+
+    .closed-notice-body p {
+      font-size: 0.86rem;
+      color: #7f1d1d;
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    .btn-closed-state {
+      background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%) !important;
+      box-shadow: 0 6px 18px rgba(220, 38, 38, 0.25) !important;
+    }
+
     /* FOOTER */
     .site-footer {
       background: var(--color-dark-navy);
@@ -943,6 +989,22 @@
       
       <!-- CARD FORM PENDAFTARAN -->
       <div class="card-panel" id="formCardPanel">
+        <!-- PENGUMUMAN JIKA PORTAL PENDAFTARAN DITUTUP ADMIN -->
+        <div id="registrationClosedBanner" class="closed-notice-banner" style="display: none;">
+          <div class="closed-notice-icon">
+            <i data-lucide="lock" style="width: 20px; height: 20px;"></i>
+          </div>
+          <div class="closed-notice-body">
+            <h4>PENGUMUMAN: PENDAFTARAN SUDAH DITUTUP</h4>
+            <p id="closedBannerText">Mohon maaf, pendaftaran OMEGA PLUS 2026 saat ini sudah ditutup oleh panitia.</p>
+            <div style="margin-top: 10px;">
+              <button type="button" class="btn btn-secondary" style="height: 36px; padding: 0 14px; font-size: 0.8rem;" onclick="switchMainTab('status')">
+                <i data-lucide="search" style="width: 14px; height: 14px;"></i> Cek Status &amp; Cetak Kwitansi Peserta
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="card-header-bar">
           <div class="card-eyebrow">REGISTRASI PESERTA BARU</div>
           <h2 class="card-title">Data Calon Peserta Olimpiade</h2>
@@ -1106,7 +1168,7 @@
 
           <!-- SUBMIT BUTTON -->
           <div style="margin-top: 2rem;">
-            <button type="submit" id="btnSubmitForm" class="btn btn-primary btn-block">
+            <button type="submit" id="btnSubmitForm" class="btn btn-primary btn-block" onclick="handleSubmitButtonClick(event)">
               <i data-lucide="send" style="width: 18px; height: 18px;"></i> Kirim Pendaftaran & Terbitkan Kwitansi
             </button>
           </div>
@@ -1242,10 +1304,85 @@
     let uploadedFileName = null;
     let lastRegisteredData = null;
     let statusSearchResults = [];
+    let isRegistrationClosed = false;
+    let closedAnnouncementText = 'Mohon maaf, pendaftaran OMEGA PLUS 2026 saat ini sudah ditutup oleh panitia. Terima kasih atas partisipasi Bapak/Ibu dan seluruh peserta.';
 
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
+
+    function applyRegistrationClosedState(isClosed, customMessage) {
+      isRegistrationClosed = Boolean(isClosed);
+      if (customMessage && String(customMessage).trim()) {
+        closedAnnouncementText = String(customMessage).trim();
+      }
+
+      const banner = document.getElementById('registrationClosedBanner');
+      const bannerText = document.getElementById('closedBannerText');
+      const submitBtn = document.getElementById('btnSubmitForm');
+
+      if (bannerText) bannerText.innerText = closedAnnouncementText;
+      if (banner) banner.style.display = isRegistrationClosed ? 'flex' : 'none';
+
+      if (submitBtn) {
+        submitBtn.classList.toggle('btn-closed-state', isRegistrationClosed);
+        if (isRegistrationClosed) {
+          submitBtn.innerHTML = `<i data-lucide="lock" style="width: 18px; height: 18px;"></i> Pendaftaran Ditutup — Lihat Pengumuman`;
+        } else {
+          submitBtn.innerHTML = `<i data-lucide="send" style="width: 18px; height: 18px;"></i> Kirim Pendaftaran &amp; Terbitkan Kwitansi`;
+        }
+        lucide.createIcons();
+      }
+    }
+
+    function showRegistrationClosedAlert() {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Pendaftaran Sudah Ditutup',
+        html: `
+          <div style="font-size: 0.92rem; color: #334155; line-height: 1.55;">
+            <p style="margin-bottom: 10px;">${esc(closedAnnouncementText)}</p>
+            <p style="font-size: 0.82rem; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+              Bagi peserta yang sudah terdaftar sebelumnya, Anda tetap dapat melacak data dan mencetak kwitansi melalui menu <strong>Cek Status Peserta</strong>.
+            </p>
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#285891',
+        confirmButtonText: 'Cek Status & Kwitansi',
+        cancelButtonText: 'Tutup'
+      }).then((res) => {
+        if (res.isConfirmed) {
+          switchMainTab('status');
+        }
+      });
+    }
+
+    function handleSubmitButtonClick(event) {
+      if (isRegistrationClosed) {
+        event.preventDefault();
+        showRegistrationClosedAlert();
+      }
+    }
+
+    async function loadPublicPortalStatus() {
+      try {
+        const apiUrl = (window.APP_CONFIG && window.APP_CONFIG.API_URL) ? window.APP_CONFIG.API_URL : '/api';
+        const res = await fetch(`${apiUrl}?action=getPublicConfig`);
+        const result = await res.json();
+        if (result.status === 'success' && result.data) {
+          const statusStr = String(result.data.Status_Pendaftaran || 'BUKA').trim().toUpperCase();
+          const msg = result.data.Pesan_Penutupan || closedAnnouncementText;
+          applyRegistrationClosedState(statusStr === 'TUTUP', msg);
+        }
+      } catch (e) {
+        // Biarkan form tetap berfungsi normal jika cek awal gagal; backend tetap memvalidasi saat submit
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadPublicPortalStatus();
+    });
 
     // Switch Tabs
     function switchMainTab(tab) {
@@ -1345,6 +1482,11 @@
     async function handleFormSubmit(event) {
       event.preventDefault();
 
+      if (isRegistrationClosed) {
+        showRegistrationClosedAlert();
+        return;
+      }
+
       const nama = document.getElementById('inputNama').value.trim();
       const sekolah = document.getElementById('inputSekolah').value.trim();
       const alamatSekolah = document.getElementById('inputAlamatSekolah').value.trim();
@@ -1400,6 +1542,9 @@
           lastRegisteredData = result.data;
           Swal.close();
           showDigitalReceipt(result.data);
+        } else if (result.code === 'REGISTRATION_CLOSED' || String(result.message || '').toLowerCase().includes('ditutup')) {
+          applyRegistrationClosedState(true, result.message);
+          showRegistrationClosedAlert();
         } else {
           Swal.fire({ icon: 'error', title: 'Pendaftaran Gagal', text: result.message || 'Terjadi kesalahan sistem.' });
         }
@@ -1493,6 +1638,10 @@
 
     // Daftar Peserta Lain
     function daftarPesertaLain() {
+      if (isRegistrationClosed) {
+        showRegistrationClosedAlert();
+        return;
+      }
       document.getElementById('registrationForm').reset();
       resetUploadedFile();
       selectLevel('Level 1 (Kelas 3 - 4)');

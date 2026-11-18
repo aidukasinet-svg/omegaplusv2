@@ -208,6 +208,7 @@ function setupDatabase() {
       ["Kontak_2", "085259349169 (Bapak Indra)", "Narahubung 2"],
       ["Kontak_3", "081235922003 (Ibu Dwi Elly)", "Narahubung 3"],
       ["Status_Pendaftaran", "BUKA", "Status form pendaftaran (BUKA / TUTUP)"],
+      ["Pesan_Penutupan", "Mohon maaf, pendaftaran OMEGA PLUS 2026 saat ini sudah ditutup oleh panitia. Terima kasih atas partisipasi Bapak/Ibu dan seluruh peserta.", "Pesan pengumuman saat portal pendaftaran ditutup"],
       ["Sesi_1", "IPA & IPS (07.30 - 08.30 WIB)", "Jadwal Ujian Sesi 1"],
       ["Sesi_2", "Matematika & Bahasa Inggris (09.00 - 10.00 WIB)", "Jadwal Ujian Sesi 2"]
     ];
@@ -558,7 +559,8 @@ function doGet(e) {
         break;
 
       case "getPublicConfig":
-        result = handleGetPublicConfig();
+        var forceFresh = (e && e.parameter && (e.parameter.fresh === "1" || e.parameter.fresh === "true"));
+        result = handleGetPublicConfig(forceFresh);
         break;
 
       case "getDashboardStats":
@@ -641,6 +643,10 @@ function doPost(e) {
         result = handleDeletePeserta(payload);
         break;
 
+      case "setRegistrationStatus":
+        result = handleSetRegistrationStatus(payload);
+        break;
+
       default:
         result = { status: "error", message: "Aksi POST '" + action + "' tidak dikenali" };
     }
@@ -653,13 +659,17 @@ function doPost(e) {
 }
 
 /**
- * Mengambil Pengaturan Publik (Dengan Cache)
+ * Mengambil Pengaturan Publik (Dengan Cache & Tanpa Mengekspos PIN Rahasia)
  */
-function handleGetPublicConfig() {
+var DEFAULT_CLOSED_MESSAGE = "Mohon maaf, pendaftaran OMEGA PLUS 2026 saat ini sudah ditutup oleh panitia. Terima kasih atas partisipasi Bapak/Ibu dan seluruh peserta.";
+
+function handleGetPublicConfig(forceRefresh) {
   var cache = CacheService.getScriptCache();
-  var cached = cache.get("PUBLIC_CONFIG");
-  if (cached) {
-    return { status: "success", data: JSON.parse(cached) };
+  if (!forceRefresh) {
+    var cached = cache.get("PUBLIC_CONFIG");
+    if (cached) {
+      return { status: "success", data: JSON.parse(cached) };
+    }
   }
 
   var ss = getDatabase();
@@ -667,13 +677,86 @@ function handleGetPublicConfig() {
   var data = sheet.getDataRange().getValues();
   var config = {};
   for (var i = 1; i < data.length; i++) {
-    var key = data[i][0];
+    var key = String(data[i][0] || "").trim();
     var val = data[i][1];
+    if (!key || key === "Admin_PIN" || key === "Panitia_PIN") continue;
     config[key] = val;
   }
 
-  cache.put("PUBLIC_CONFIG", JSON.stringify(config), 21600);
+  if (!config.Status_Pendaftaran) config.Status_Pendaftaran = "BUKA";
+  if (!config.Pesan_Penutupan) config.Pesan_Penutupan = DEFAULT_CLOSED_MESSAGE;
+
+  cache.put("PUBLIC_CONFIG", JSON.stringify(config), 300); // Cache 5 menit agar perubahan cepat tersinkron
   return { status: "success", data: config };
+}
+
+/**
+ * UBAH STATUS PORTAL PENDAFTARAN (BUKA / TUTUP) & PESAN PENGUMUMAN (Super Admin Only)
+ */
+function handleSetRegistrationStatus(payload) {
+  try {
+    var auth = handleVerifyDualPin(payload ? payload.pin : "");
+    if (!auth.authorized || auth.role !== "super_admin") {
+      return { status: "error", message: "Akses ditolak: Hanya Super Admin yang berhak membuka atau menutup portal pendaftaran." };
+    }
+
+    var statusBaru = String(payload.status || "").trim().toUpperCase() === "TUTUP" ? "TUTUP" : "BUKA";
+    var pesanBaru = (payload.pesanPenutupan !== undefined && payload.pesanPenutupan !== null)
+      ? String(payload.pesanPenutupan).trim()
+      : "";
+
+    var ss = getDatabase();
+    var sheet = getOrCreateSheet(ss, SHEET_NAMES.PENGATURAN);
+    var lastRow = sheet.getLastRow();
+    var data = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 3).getValues() : [];
+
+    var statusRowIdx = -1;
+    var pesanRowIdx = -1;
+    var existingPesan = DEFAULT_CLOSED_MESSAGE;
+
+    for (var i = 0; i < data.length; i++) {
+      var paramName = String(data[i][0] || "").trim();
+      if (paramName === "Status_Pendaftaran") statusRowIdx = i + 2;
+      if (paramName === "Pesan_Penutupan") {
+        pesanRowIdx = i + 2;
+        if (String(data[i][1] || "").trim()) existingPesan = String(data[i][1]).trim();
+      }
+    }
+
+    if (statusRowIdx !== -1) {
+      sheet.getRange(statusRowIdx, 2).setValue(statusBaru);
+    } else {
+      sheet.appendRow(["Status_Pendaftaran", statusBaru, "Status form pendaftaran (BUKA / TUTUP)"]);
+    }
+
+    var finalPesan = pesanBaru || existingPesan || DEFAULT_CLOSED_MESSAGE;
+    if (pesanBaru || pesanRowIdx === -1) {
+      if (pesanRowIdx !== -1) {
+        sheet.getRange(pesanRowIdx, 2).setValue(sanitizeSheetCell(finalPesan));
+      } else {
+        sheet.appendRow(["Pesan_Penutupan", sanitizeSheetCell(finalPesan), "Pesan pengumuman saat portal pendaftaran ditutup"]);
+      }
+    }
+
+    SpreadsheetApp.flush();
+    CacheService.getScriptCache().remove("PUBLIC_CONFIG");
+
+    var actionMsg = (statusBaru === "TUTUP")
+      ? "Portal pendaftaran resmi DITUTUP. Pengunjung yang mengklik tombol daftar akan melihat pengumuman penutupan."
+      : "Portal pendaftaran kembali DIBUKA untuk pendaftar baru.";
+
+    return {
+      status: "success",
+      message: actionMsg,
+      data: {
+        Status_Pendaftaran: statusBaru,
+        Pesan_Penutupan: finalPesan
+      }
+    };
+  } catch (err) {
+    Logger.log("Error handleSetRegistrationStatus: " + err.toString());
+    return { status: "error", message: "Gagal memperbarui status portal pendaftaran: " + err.message };
+  }
 }
 
 /**
@@ -748,9 +831,13 @@ function handleVerifyDualPin(inputPin) {
  */
 function handleDaftarPesertaTurbo(data) {
   try {
-    var pubCfg = handleGetPublicConfig();
+    var pubCfg = handleGetPublicConfig(false);
     if (pubCfg && pubCfg.data && String(pubCfg.data.Status_Pendaftaran || "").trim().toUpperCase() === "TUTUP") {
-      return { status: "error", message: "Mohon maaf, pendaftaran OMEGA PLUS 2026 saat ini sedang ditutup oleh panitia." };
+      return {
+        status: "error",
+        code: "REGISTRATION_CLOSED",
+        message: String(pubCfg.data.Pesan_Penutupan || DEFAULT_CLOSED_MESSAGE)
+      };
     }
 
     var nama = String(data.nama || "").trim().toUpperCase();

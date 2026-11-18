@@ -1074,6 +1074,92 @@
       background: #f1f5f9;
     }
 
+    /* PORTAL STATUS CONTROL CARD (BUKA / TUTUP PENDAFTARAN) */
+    .portal-control-card {
+      background: #ffffff;
+      border: 1.5px solid var(--color-border-subtle);
+      border-radius: var(--radius-md);
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.15rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.9rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .portal-control-card.is-closed {
+      border-color: #fecaca;
+      background: #fef2f2;
+    }
+
+    .portal-control-info {
+      flex: 1 1 280px;
+      min-width: 0;
+    }
+
+    .portal-status-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .portal-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 11px;
+      border-radius: 9999px;
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+
+    .portal-status-pill.open {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
+    }
+
+    .portal-status-pill.closed {
+      background: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+    }
+
+    .portal-control-desc {
+      font-size: 0.8rem;
+      color: #475569;
+      line-height: 1.45;
+    }
+
+    .portal-control-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .btn-danger-solid {
+      background: #dc2626;
+      color: #ffffff;
+    }
+    .btn-danger-solid:hover {
+      background: #b91c1c;
+    }
+
+    .btn-success-solid {
+      background: #059669;
+      color: #ffffff;
+    }
+    .btn-success-solid:hover {
+      background: #047857;
+    }
+
     /* FOOTER */
     .site-footer {
       background: #0e223d;
@@ -1123,6 +1209,16 @@
       .table-panel, .db-overview-panel {
         padding: 1rem;
         border-radius: var(--radius-md);
+      }
+      .portal-control-card {
+        padding: 0.9rem 1rem;
+      }
+      .portal-control-actions {
+        width: 100%;
+      }
+      .portal-control-actions .btn {
+        flex: 1;
+        min-width: 140px;
       }
       .btn-toggle-filter {
         display: inline-flex;
@@ -1264,6 +1360,24 @@
          MENU 1: RINGKASAN & STATISTIK
          ======================================================================== -->
     <section id="view-ringkasan" class="admin-view-section active">
+      <!-- KONTROL BUKA / TUTUP PORTAL PENDAFTARAN -->
+      <div id="portalControlCard" class="portal-control-card">
+        <div class="portal-control-info">
+          <div class="portal-status-row">
+            <strong style="font-size: 0.92rem; color: var(--color-primary-navy);">Status Portal Pendaftaran:</strong>
+            <span id="portalStatusPill" class="portal-status-pill open">
+              <i data-lucide="unlock" style="width: 13px; height: 13px;"></i> DIBUKA
+            </span>
+          </div>
+          <div id="portalControlDesc" class="portal-control-desc">
+            Formulir pendaftaran online saat ini terbuka untuk calon peserta baru.
+          </div>
+        </div>
+        <div id="portalControlActions" class="portal-control-actions">
+          <!-- Diisi otomatis sesuai status & role (Super Admin / Panitia) -->
+        </div>
+      </div>
+
       <!-- METRIC STATS GRID -->
       <div class="stats-grid-8">
         <div class="stat-card">
@@ -1658,6 +1772,8 @@
     let allPesertaList = [];
     let currentRole = null; // 'super_admin' or 'panitia'
     let currentPin = null;
+    let portalStatus = 'BUKA'; // 'BUKA' | 'TUTUP'
+    let portalClosedMessage = 'Mohon maaf, pendaftaran OMEGA PLUS 2026 saat ini sudah ditutup oleh panitia. Terima kasih atas partisipasi Bapak/Ibu dan seluruh peserta.';
 
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1815,6 +1931,170 @@
         `;
       }
       lucide.createIcons();
+      renderPortalStatusUI();
+    }
+
+    function renderPortalStatusUI() {
+      const card = document.getElementById('portalControlCard');
+      const pill = document.getElementById('portalStatusPill');
+      const desc = document.getElementById('portalControlDesc');
+      const actions = document.getElementById('portalControlActions');
+      if (!card || !pill || !desc || !actions) return;
+
+      const isClosed = (String(portalStatus || 'BUKA').toUpperCase() === 'TUTUP');
+      const isSuper = (currentRole === 'super_admin');
+
+      card.classList.toggle('is-closed', isClosed);
+      if (isClosed) {
+        pill.className = 'portal-status-pill closed';
+        pill.innerHTML = `<i data-lucide="lock" style="width: 13px; height: 13px;"></i> DITUTUP`;
+        desc.innerHTML = `<strong>Pengumuman aktif:</strong> "${esc(portalClosedMessage)}"`;
+      } else {
+        pill.className = 'portal-status-pill open';
+        pill.innerHTML = `<i data-lucide="unlock" style="width: 13px; height: 13px;"></i> DIBUKA`;
+        desc.innerHTML = `Formulir pendaftaran online saat ini aktif dan menerima pendaftar baru.`;
+      }
+
+      if (isSuper) {
+        if (isClosed) {
+          actions.innerHTML = `
+            <button type="button" class="btn btn-secondary" onclick="editPortalClosedMessage()">
+              <i data-lucide="message-square" style="width: 14px; height: 14px;"></i> Ubah Pesan
+            </button>
+            <button type="button" class="btn btn-success-solid" onclick="togglePortalRegistrationStatus('BUKA')">
+              <i data-lucide="unlock" style="width: 14px; height: 14px;"></i> Buka Kembali Pendaftaran
+            </button>
+          `;
+        } else {
+          actions.innerHTML = `
+            <button type="button" class="btn btn-danger-solid" onclick="togglePortalRegistrationStatus('TUTUP')">
+              <i data-lucide="lock" style="width: 14px; height: 14px;"></i> Tutup Portal Pendaftaran
+            </button>
+          `;
+        }
+      } else {
+        actions.innerHTML = `<span style="font-size: 0.76rem; color: #64748b; font-style: italic;">Kontrol khusus Super Admin</span>`;
+      }
+      lucide.createIcons();
+    }
+
+    async function loadPortalRegistrationStatus() {
+      try {
+        const apiUrl = (window.APP_CONFIG && window.APP_CONFIG.API_URL) ? window.APP_CONFIG.API_URL : '/api';
+        const res = await fetch(`${apiUrl}?action=getPublicConfig&fresh=1&t=${Date.now()}`);
+        const result = await res.json();
+        if (result.status === 'success' && result.data) {
+          portalStatus = String(result.data.Status_Pendaftaran || 'BUKA').trim().toUpperCase();
+          if (result.data.Pesan_Penutupan) {
+            portalClosedMessage = String(result.data.Pesan_Penutupan).trim();
+          }
+          renderPortalStatusUI();
+        }
+      } catch (e) {
+        // Pertahankan status terakhir jika koneksi sementara gagal
+      }
+    }
+
+    async function togglePortalRegistrationStatus(targetStatus) {
+      if (currentRole !== 'super_admin') {
+        Swal.fire({ icon: 'warning', title: 'Akses Terbatas', text: 'Hanya Super Admin yang berhak mengubah status portal pendaftaran.' });
+        return;
+      }
+
+      if (targetStatus === 'TUTUP') {
+        const res = await Swal.fire({
+          title: 'Tutup Portal Pendaftaran?',
+          html: `
+            <div style="text-align: left; font-size: 13px; color: #334155;">
+              <p style="margin-bottom: 10px;">Jika ditutup, pengunjung yang mengklik tombol daftar tidak dapat mengirim pendaftaran baru dan akan melihat pesan pengumuman di bawah ini (menu <b>Cek Status &amp; Kwitansi</b> tetap dapat diakses):</p>
+              <label for="swal-closed-msg" style="font-weight: 700; display: block; margin-bottom: 4px; color: #19365f;">Pesan Pengumuman Penutupan:</label>
+              <textarea id="swal-closed-msg" class="swal2-textarea" style="margin: 0; width: 100%; min-height: 95px; font-size: 13px; padding: 10px;">${esc(portalClosedMessage)}</textarea>
+            </div>
+          `,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#dc2626',
+          confirmButtonText: 'Ya, Tutup Pendaftaran',
+          cancelButtonText: 'Batal',
+          preConfirm: () => {
+            const msg = (document.getElementById('swal-closed-msg').value || '').trim();
+            if (!msg) {
+              Swal.showValidationMessage('Pesan pengumuman tidak boleh kosong.');
+              return false;
+            }
+            return msg;
+          }
+        });
+        if (!res.isConfirmed) return;
+        await submitRegistrationStatusUpdate('TUTUP', res.value);
+      } else {
+        const res = await Swal.fire({
+          title: 'Buka Kembali Portal Pendaftaran?',
+          text: 'Calon peserta akan kembali dapat mengisi formulir dan mengirim pendaftaran baru.',
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonColor: '#059669',
+          confirmButtonText: 'Ya, Buka Kembali',
+          cancelButtonText: 'Batal'
+        });
+        if (!res.isConfirmed) return;
+        await submitRegistrationStatusUpdate('BUKA', portalClosedMessage);
+      }
+    }
+
+    async function editPortalClosedMessage() {
+      if (currentRole !== 'super_admin') return;
+      const res = await Swal.fire({
+        title: 'Ubah Pesan Pengumuman',
+        html: `
+          <div style="text-align: left; font-size: 13px;">
+            <label for="swal-edit-closed-msg" style="font-weight: 700; display: block; margin-bottom: 6px; color: #19365f;">Teks Pengumuman Penutupan Portal:</label>
+            <textarea id="swal-edit-closed-msg" class="swal2-textarea" style="margin: 0; width: 100%; min-height: 100px; font-size: 13px; padding: 10px;">${esc(portalClosedMessage)}</textarea>
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#285891',
+        confirmButtonText: 'Simpan Pengumuman',
+        cancelButtonText: 'Batal',
+        preConfirm: () => {
+          const msg = (document.getElementById('swal-edit-closed-msg').value || '').trim();
+          if (!msg) {
+            Swal.showValidationMessage('Pesan pengumuman tidak boleh kosong.');
+            return false;
+          }
+          return msg;
+        }
+      });
+      if (!res.isConfirmed) return;
+      await submitRegistrationStatusUpdate('TUTUP', res.value);
+    }
+
+    async function submitRegistrationStatusUpdate(statusVal, messageVal) {
+      Swal.fire({ title: 'Menyimpan Pengaturan...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      try {
+        const apiUrl = (window.APP_CONFIG && window.APP_CONFIG.API_URL) ? window.APP_CONFIG.API_URL : '/api';
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'setRegistrationStatus',
+            pin: currentPin,
+            status: statusVal,
+            pesanPenutupan: messageVal
+          })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          portalStatus = (data.data && data.data.Status_Pendaftaran) ? data.data.Status_Pendaftaran : statusVal;
+          portalClosedMessage = (data.data && data.data.Pesan_Penutupan) ? data.data.Pesan_Penutupan : messageVal;
+          renderPortalStatusUI();
+          Swal.fire({ icon: 'success', title: portalStatus === 'TUTUP' ? 'Portal Ditutup' : 'Portal Dibuka', text: data.message });
+        } else {
+          Swal.fire({ icon: 'error', title: 'Gagal Mengubah Status', text: data.message || 'Pastikan Code.gs terbaru sudah di-deploy sebagai New Version.' });
+        }
+      } catch (e) {
+        Swal.fire({ icon: 'error', title: 'Gagal Terhubung', text: 'Tidak dapat menghubungi server Google Apps Script.' });
+      }
     }
 
     function logoutAdmin() {
@@ -1865,6 +2145,9 @@
       const apiUrl = (window.APP_CONFIG && window.APP_CONFIG.API_URL) ? window.APP_CONFIG.API_URL : '/api';
 
       try {
+        // Status Portal Pendaftaran (BUKA / TUTUP)
+        await loadPortalRegistrationStatus();
+
         // Stats
         const resStats = await fetch(`${apiUrl}?action=getDashboardStats`);
         const dataStats = await resStats.json();
